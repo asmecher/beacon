@@ -12,11 +12,15 @@ $options = [
 	'scriptName' => array_shift($argv),
 	'quiet' => false,
 	'inputFile' => 'php://stdin',
+	'createSchema' => false,
 ];
 while ($option = array_shift($argv)) switch ($option) {
 	case '-q':
 	case '--quiet':
 		$options['quiet'] = true;
+		break;
+	case '-c':
+		$options['createSchema'] = true;
 		break;
 	case '-f':
 		$options['inputFile'] = $c = array_shift($options);
@@ -34,7 +38,8 @@ while ($option = array_shift($argv)) switch ($option) {
 
 require_once('classes/BeaconList.inc.php');
 $beaconList = new BeaconList();
-$beaconList->openLocked();
+if ($options['createSchema']) $beaconList->createSchema();
+
 $stats = [
 	'ojsLogCount' => 0, 'ompLogCount' => 0, 'opsLogCount' => 0,
 	'beaconDisabledLogCount' => 0, 'excludedCount' => 0,
@@ -89,11 +94,10 @@ while ($line = fgets($fp)) {
 		$stats['newAdditions']++;
 	} else {
 		// Update the existing beacon entry.
-		$beaconList->updateFields($beaconEntry, ['lastBeacon' => $beaconList->formatTime(strtotime($entry->time))]);
+		$beaconList->updateFields($beaconId, ['last_beacon' => $beaconList->formatTime(strtotime($entry->time))]);
 		$stats['returningBeacons']++;
 	}
 }
-$beaconList->saveLocked();
 fclose($fp);
 
 if (!$options['quiet']) {

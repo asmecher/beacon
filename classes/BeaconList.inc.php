@@ -1,14 +1,49 @@
 <?php
 
+use Illuminate\Database\Capsule\Manager as Capsule;
+
 class BeaconList {
-	const FILENAME='beacon.csv';
+	/**
+	 * Constructor
+	 */
+	public function __construct() {
+		$capsule = new Capsule;
 
-	protected $_entries;
+		$capsule->addConnection([
+			'driver' => 'mysql',
+			'host' => 'localhost',
+			'database' => 'beacon',
+			'username' => 'beacon',
+			'password' => 'beacon',
+			'charset' => 'utf8',
+			'collation' => 'utf8_unicode_ci',
+			'prefix' => '',
+		]);
+		$capsule->setAsGlobal();
+	}
 
-	protected $_fp = null;
-
-	function __construct() {
-		$this->load();
+	/**
+	 * Create the database schema.
+	 */
+	public function createSchema() {
+		Capsule::schema()->create('entries', function($table) {
+			$table->increments('id');
+			$table->string('application');
+			$table->string('version');
+			$table->string('beacon_id')->unique();
+			$table->string('oai_url');
+			$table->string('stats_id');
+			$table->datetime('first_beacon');
+			$table->datetime('last_beacon');
+			$table->datetime('last_oai_response')->nullable();
+			$table->string('admin_email')->nullable();
+			$table->string('issn')->nullable();
+			$table->string('country')->nullable();
+			$table->integer('total_record_count')->nullable();
+			$table->datetime('last_completed_update')->nullable();
+			$table->integer('errors')->default(0);
+			$table->mediumText('last_error')->nullable();
+		});
 	}
 
 	/**
@@ -49,28 +84,11 @@ class BeaconList {
 	}
 
 	/**
-	 * Load the entry list from CSV.
-	 */
-	public function load() {
-		$this->_entries = [];
-		$fp = fopen(self::FILENAME, 'r');
-		if (!$fp) throw new Exception('Could not open beacon file ' . self::FILENAME . ' for reading.');
-		if (!flock($fp, LOCK_SH)) throw new Exception ('Could not lock beacon file!');
-		$columnNames = fgetcsv($fp);
-		while ($row = fgetcsv($fp)) {
-			$entry = array_combine($columnNames, $row);
-			$this->_entries[$this->getBeaconIdFromEntry($entry)] = $entry;
-		}
-		flock($fp, LOCK_UN);
-		fclose($fp);
-	}
-
-	/**
 	 * Get the list of beacon entries.
-	 * @return array
+	 * @return Iterator
 	 */
 	public function getEntries() {
-		return $this->_entries;
+		return Capsule::table('entries')->get();
 	}
 
 	/**
@@ -79,7 +97,7 @@ class BeaconList {
 	 * @return array|null Beacon entry, or null if not found.
 	 */
 	public function find($beaconId) {
-		return $this->_entries[$beaconId] ?? null;
+		return (array) Capsule::table('entries')->where('beacon_id', '=', $beaconId)->get()->first();
 	}
 
 	/**
@@ -87,35 +105,7 @@ class BeaconList {
 	 * @return int
 	 */
 	public function getCount() {
-		return count($this->_entries);
-	}
-
-	/**
-	 * Open the beacon list with an exclusive lock.
-	 * @see BeaconList::saveLocked
-	 */
-	public function openLocked() {
-		$this->_fp = fopen(self::FILENAME, 'r+');
-		if (!$this->_fp) throw new Exception('Could not open beacon file ' . self::FILENAME . ' for appending.');
-		if (!flock($this->_fp, LOCK_EX)) throw new Exception ('Could not lock beacon file!');
-	}
-
-	/**
-	 * Save the beacon file previously opened with openLocked, and release the lock and close.
-	 * @see BeaconList::openLocked
-	 */
-	public function saveLocked() {
-		// Truncate the file after the header row.
-		$columnNames = fgetcsv($this->_fp);
-		ftruncate($this->_fp, ftell($this->_fp));
-		foreach ($this->_entries as $entry) {
-			fputcsv($this->_fp, array_map(function($key) use ($entry) {
-				return $entry[$key]??null;
-			}, $columnNames));
-		}
-		flock($this->_fp, LOCK_UN);
-		fclose($this->_fp);
-		$this->_fp = null;
+		return Capsule::table('entries')->count();
 	}
 
 	/**
@@ -136,44 +126,34 @@ class BeaconList {
 	 */
 	public function addFromQuery($application, $version, $query, $time) {
 		$beaconId = $this->getBeaconIdFromQuery($application, $query);
-		$entry = [
+		Capsule::table('entries')->insert($entry = [
 			'application' => $application,
 			'version' => $version,
-			'beaconId' => $beaconId,
-			'oaiUrl' => $query['oai'],
-			'statsId' => $query['id'],
-			'firstBeacon' => $this->formatTime($time),
-			'lastBeacon' => $this->formatTime($time),
-			'lastOaiResponse' => null,
-			'adminEmail' => null,
+			'beacon_id' => $beaconId,
+			'oai_url' => $query['oai'],
+			'stats_id' => $query['id'],
+			'first_beacon' => $this->formatTime($time),
+			'last_beacon' => $this->formatTime($time),
+			'last_oai_response' => null,
+			'admin_email' => null,
 			'issn' => null,
 			'country' => null,
-			'totalRecordCount' => null,
-			'lastCompletedUpdate' => null,
+			'total_record_count' => null,
+			'last_completed_update' => null,
 			'errors' => 0,
-			'lastError' => null,
-		];
-
-
-		$this->_entries[$beaconId] = $entry;
-
+			'last_error' => null,
+		]);
 		return $entry;
 	}
 
 	/**
 	 * Update fields in an entry and save the resulting beacon list.
-	 * @param $entry array The entry to update
+	 * @param $beaconId string The beacon ID of the entry to update
 	 * @param $fields array Optional extra data to include in the entry
 	 */
-	public function updateFields(array $entry, array $fields = []) {
-		if (!$this->_fp) $this->load();
-		$this->_entries[$entry['beaconId']] = array_merge(
-			$entry,
-			$fields
-		);
-		if (!$this->_fp) {
-			$this->openLocked();
-			$this->saveLocked();
-		}
+	public function updateFields(string $beaconId, array $fields = []) {
+		Capsule::table('entries')
+			->where('beacon_id', '=', $beaconId)
+			->update($fields);
 	}
 }

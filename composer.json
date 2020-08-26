@@ -3,6 +3,7 @@
         "kassner/log-parser": "~2.0",
 	"caseyamcl/phpoaipmh": "^3.0",
         "guzzlehttp/guzzle":   "^6.3",
-        "spatie/async": "^1.4"
+        "spatie/async": "^1.4",
+        "illuminate/database": "^7.26"
     }
 }

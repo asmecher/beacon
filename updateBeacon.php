@@ -64,26 +64,32 @@ $statistics = [
 ];
 
 foreach ($beaconList->getEntries() as $entry) {
+	$entry = (array) $entry;
+
 	// Select only the desired entries for task queueing.
 	$statistics['total']++;
 	if (!empty($options['oaiUrl'])) {
 		// If a specific OAI URL was specified, update that record.
-		if ($entry['oaiUrl'] != $options['oaiUrl']) {
+		if ($entry['oai_url'] != $options['oaiUrl']) {
 			$statistics['skipped']++;
 			continue;
 		}
 		else $statistics['selected']++;
 	} else {
 		// Default: skip anything that was updated successfully in the last week.
-		if (time() - strtotime($entry['lastCompletedUpdate']) < $options['minimumSecondsBetweenUpdates']) {
+		if (time() - strtotime($entry['last_completed_update']) < $options['minimumSecondsBetweenUpdates']) {
 			$statistics['skipped']++;
 			continue;
 		}
 	}
 
 	$pool->add(function () use ($entry, $options) {
+		try {
 		require('classes/BeaconList.inc.php');
-		$endpoint = new \Phpoaipmh\Endpoint(new Phpoaipmh\Client($entry['oaiUrl'], new \Phpoaipmh\HttpAdapter\GuzzleAdapter(new \GuzzleHttp\Client([
+		$beaconList = new BeaconList();
+		$beaconId = $entry['beacon_id'];
+
+		$endpoint = new \Phpoaipmh\Endpoint(new Phpoaipmh\Client($entry['oai_url'], new \Phpoaipmh\HttpAdapter\GuzzleAdapter(new \GuzzleHttp\Client([
 			'headers' => ['User-Agent' => 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:79.0) Gecko/20100101 Firefox/79.0'],
 			'timeout' => $options['requestTimeout'],
 		]))));
@@ -93,20 +99,21 @@ foreach ($beaconList->getEntries() as $entry) {
 		try {
 			$result = $endpoint->identify();
 			if ($result->Identify->baseURL) {
-				$entry['lastOaiResponse'] = BeaconList::formatTime();
-				$entry['adminEmail'] = $result->Identify->adminEmail;
+				$beaconList->updateFields($beaconId, [
+					'last_oai_response' => BeaconList::formatTime(),
+					'admin_email' => $result->Identify->adminEmail
+				]);
 			}
 			else $oaiFailure = true;
 		} catch (Exception $e) {
-			$entry['lastError'] = 'Identify: ' . $e->getMessage();
-			$entry['errors']++;
+			$beaconList->updateFields($beaconId, ['last_error' => 'Identify: ' . $e->getMessage()]);
 			$oaiFailure = true;
 		}
 
 		// Use an OAI ListRecords request to get the ISSN.
-		if (!$oaiFailure && $entry['issn'] === '') try {
+		if (!$oaiFailure && $entry['issn'] === null) try {
 			$results = $endpoint->listRecords('oai_dc');
-			$entry['totalRecordCount'] = $results->getTotalRecordCount();
+			$beaconList->updateFields($beaconId, ['total_record_count' => $results->getTotalRecordCount()]);
 			foreach ($results as $result) {
 				if ($result->metadata->getName() === '') continue;
 				$metadata = $result->metadata->children('http://www.openarchives.org/OAI/2.0/oai_dc/');
@@ -116,31 +123,36 @@ foreach ($beaconList->getEntries() as $entry) {
 					$matches = null;
 					if (preg_match('%(\d{4}\-\d{3}(\d|x|X))%', $source, $matches)) {
 						$entry['issn'] = $matches[1];
+						$beaconList->updateFields($beaconId, ['issn' => $matches[1]]);
 						break 2;
 					}
 				}
 			}
 		} catch (Exception $e) {
-			$entry['lastError'] = 'ListRecords: ' . $e->getMessage();
+			$beaconList->updateFields($beaconId, ['last_error' => 'ListRecords: ' . $e->getMessage()]);
 			$oaiFailure = true;
 		}
 
 		// Fetch the country using the ISSN.
-		if ($entry['issn'] !== '' && $entry['country'] === '') try {
+		if ($entry['issn'] !== null && $entry['country'] === null) try {
 			$client = new GuzzleHttp\Client();
 			$response = $client->request('GET', 'https://portal.issn.org/api/search?search[]=MUST=allissnbis=%22' . $entry['issn'] . '%22');
 			$matches = null;
 			if (preg_match('/<p><span>Country: <\/span>([^<]*)<\/p>/', $response->getBody(), $matches)) {
-			        $entry['country'] = $matches[1];
+				$beaconList->updateFields($beaconId, ['country' => $matches[1]]);
 			}
 		} catch (Exception $e) {
-			$entry['lastError'] = 'Get country: ' . $e->getMessage();
+			$beaconList->updateFields($beaconId, ['last_error' => 'Get country: ' . $e->getMessage()]);
 		}
 
 		// Save the updated entry.
-		
-		$beaconList = new BeaconList();
-		$beaconList->updateFields($entry, $oaiFailure?[]:['lastCompletedUpdate' => $beaconList->formatTime()]);
+		if (!$oaiFailure) $beaconList->updateFields($beaconId, [
+			'last_completed_update' => $beaconList->formatTime(),
+			'last_error' => null
+		]);
+		} catch (Exception $e) {
+			throw new Exception($e->getMessage());
+		}
 	});
 }
 if (!$options['quiet']) echo 'Finished queueing. Statistics: ' . print_r($statistics, true) . "Running queue...\n";
@@ -154,7 +166,8 @@ if (!$options['quiet']) {
 	if ($options['oaiUrl']) {
 		$beaconList = new BeaconList();
 		foreach ($beaconList->getEntries() as $entry) {
-			if ($entry['oaiUrl'] == $options['oaiUrl']) print_r($entry);
+			$entry = (array) $entry;
+			if ($entry['oai_url'] == $options['oaiUrl']) print_r($entry);
 		}
 	}
 }
