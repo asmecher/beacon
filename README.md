@@ -5,7 +5,8 @@ The tools in this repository provide data harvesting using the PKP Beacon, a lig
 To install the tool:
 - Clone the repository locally
 - Install composer dependencies: `composer install`
-- Use the blank CSV file to seed the list: `cp beacon-blank.csv beacon.csv`
+- Create an empty database called "beacon" (username=beacon, password=beacon) [FIXME]
+- Create the database schema by running `php processBeaconLog.php -c`
 
 ## Usage
 
