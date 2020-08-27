@@ -34,18 +34,10 @@ php updateBeacon.php -h
 
 This is a multi-threaded tool that allows potentially several minutes for each beacon entry. Timeouts, concurrency, etc. are all configurable. Single records can be selected for update by OAI URL. See the usage information for details.
 
-## Notes
+### Extracting the data
 
-### File Locking
+Data can be exported using the `export.php` tool:
 
-Because the tools use a CSV flat-file for information storage, file locking is necessary to make sure that simultaneous edits don't damage the file.
-
-The `processBeaconLog.php` file locks the `beacon.csv` file throughout its run.
-
-The `updateBeacon.php` tool locks the `beacon.csv` file only briefly when saving each row.
-
-Both tools will wait until a lock is released before proceeding, so while running them at different times is best, running them simultaneously won't cause damage.
-
-### CSV File Details
-
-The CSV file has column names in the first row. These need to match symbolic values used in the code. If starting from scratch, use `beacon-blank.csv`. New columns can be added manually to the CSV, but make sure neither tool is currently running.
+```
+php export.php > beacon.csv
+```
