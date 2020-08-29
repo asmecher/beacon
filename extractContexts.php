@@ -2,7 +2,6 @@
 
 require_once('vendor/autoload.php');
 require_once('classes/Installations.inc.php');
-require_once('classes/Contexts.inc.php');
 require_once('classes/Beacon.inc.php');
 
 $options = [
@@ -45,7 +44,7 @@ while ($option = array_shift($argv)) switch ($option) {
 		echo "Usage: " . $options['scriptName'] . "
 		-h, -usage: Display usage information
 		-q, --quiet: Execute quietly (without status display)\n
-		--oai http://...: Select the beacon entry with the specified OAI URL to update
+		--oai http://...: Select the installation with the specified OAI URL to update
 		--timeout <n>: Set timeout per task <n> seconds (default " . Beacon::DEFAULT_TASK_TIMEOUT . ")
 		--requestTimeout <n>: Set timeout per HTTP request to <n> seconds (default " . Beacon::DEFAULT_REQUEST_TIMEOUT . ")
 		--minTimeBetween <n>: Set the minimum time in seconds between updates (default 1 week)
@@ -56,7 +55,7 @@ while ($option = array_shift($argv)) switch ($option) {
 if (!$options['quiet']) echo "Queuing processes...\r";
 
 $db = new BeaconDatabase();
-$contexts = new Contexts($db);
+$installations = new Installations($db);
 $pool = Spatie\Async\Pool::create()
 	->concurrency($options['concurrency'])
 	->timeout($options['timeout'])
@@ -66,85 +65,84 @@ $statistics = [
 	'selected' => 0, 'skipped' => 0, 'total' => 0
 ];
 
-foreach ($contexts->getAll() as $context) {
-	$context = (array) $context;
+foreach ($installations->getAll() as $installation) {
+	$installation = (array) $installation;
 
-	// Select only the desired entries for task queueing.
+	// Select only the desired installations for task queueing.
 	$statistics['total']++;
 	if (!empty($options['oaiUrl'])) {
 		// If a specific OAI URL was specified, update that record.
-		if ($entry['oai_url'] != $options['oaiUrl']) {
+		if ($installation['oai_url'] != $options['oaiUrl']) {
 			$statistics['skipped']++;
 			continue;
 		}
 		else $statistics['selected']++;
 	} else {
 		// Default: skip anything that was updated successfully in the last week.
-		if (time() - strtotime($context['last_completed_update']) < $options['minimumSecondsBetweenUpdates']) {
+		if (time() - strtotime($installation['last_completed_update']) < $options['minimumSecondsBetweenUpdates']) {
 			$statistics['skipped']++;
 			continue;
 		}
 	}
 
-	$pool->add(function() use ($context, $options) {
+	$pool->add(function() use ($installation, $options) {
 		try {
-			require('classes/Contexts.inc.php');
+			require_once('classes/Installations.inc.php');
+			require_once('classes/Contexts.inc.php');
 			$db = new BeaconDatabase();
-			$contexts = new Contexts($db);
+			$installations = new Installations($db);
+			$disambiguator = $installation['disambiguator'];
 
-			$endpoint = new \Phpoaipmh\Endpoint(new Phpoaipmh\Client($context['oai_url'], new \Phpoaipmh\HttpAdapter\GuzzleAdapter(new \GuzzleHttp\Client([
+			$endpoint = new \Phpoaipmh\Endpoint(new Phpoaipmh\Client($installation['oai_url'], new \Phpoaipmh\HttpAdapter\GuzzleAdapter(new \GuzzleHttp\Client([
 				'headers' => ['User-Agent' => 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:79.0) Gecko/20100101 Firefox/79.0'],
 				'timeout' => $options['requestTimeout'],
 			]))));
 			$oaiFailure = false;
 
-			// Use an OAI ListRecords request to get the ISSN.
-			if ($context['issn'] === null) try {
-				$records = $endpoint->listRecords('oai_dc', null, null, $context['set_spec']);
-				$contexts->updateFields($context['id'], ['total_record_count' => $records->getTotalRecordCount()]);
-				foreach ($records as $record) {
-					if ($record->metadata->getName() === '') continue;
-					$metadata = $record->metadata->children('http://www.openarchives.org/OAI/2.0/oai_dc/');
-					if ($metadata->getName() === '') continue;
-					$dc = $metadata->children('http://purl.org/dc/elements/1.1/');
-					if ($dc->getName() !== '') foreach ($dc->source as $source) {
-						$matches = null;
-						if (preg_match('%(\d{4}\-\d{3}(\d|x|X))%', $source, $matches)) {
-							$context['issn'] = $matches[1];
-							$contexts->updateFields($context['id'], ['issn' => $matches[1]]);
-							break 2;
-						}
-					}
+			// Use an OAI Identify request to get the admin email and test OAI.
+			try {
+				$result = $endpoint->identify();
+				if ($result->Identify->baseURL) {
+					$installations->updateFields($installation['id'], [
+						'last_oai_response' => $db->formatTime(),
+						'admin_email' => $result->Identify->adminEmail
+					]);
 				}
+				else $oaiFailure = true;
 			} catch (Exception $e) {
-				$contexts->updateFields($context['id'], [
-					'last_error' => 'ListRecords: ' . $e->getMessage(),
-					'errors' => ++$context['errors'],
+				$installations->updateFields($installation['id'], [
+					'last_error' => 'Identify: ' . $e->getMessage(),
+					'errors' => ++$installation['errors'],
 				]);
 				$oaiFailure = true;
 			}
 
-			// Fetch the country using the ISSN.
-			if ($context['issn'] !== null && $context['country'] === null) try {
-				$client = new GuzzleHttp\Client();
-				$response = $client->request('GET', 'https://portal.issn.org/api/search?search[]=MUST=allissnbis=%22' . $context['issn'] . '%22');
-				$matches = null;
-				if (preg_match('/<p><span>Country: <\/span>([^<]*)<\/p>/', $response->getBody(), $matches)) {
-					$contexts->updateFields($context['id'], ['country' => $matches[1]]);
+			// List sets and populate the context list.
+			if (!$oaiFailure) try {
+				$sets = $endpoint->listSets();
+				$contexts = new Contexts($db);
+				$contexts->flushByInstallationId($installation['id']);
+				foreach ($sets as $set) {
+					// Skip anything that looks like a journal section
+					if (strstr($set->setSpec, ':') !== false) continue;
+
+					$contexts->add($installation['id'], $set->setSpec);
 				}
 			} catch (Exception $e) {
-				$contexts->updateFields($context['id'], [
-					'last_error' => 'Get country: ' . $e->getMessage(),
-					'errors' => ++$context['errors'],
+				$installations->updateFields($installation['id'], [
+					'last_error' => 'ListSets: ' . $e->getMessage(),
+					'errors' => ++$installation['errors'],
 				]);
+				$oaiFailure = true;
 			}
 
-			// Save the updated entry.
-			if (!$oaiFailure) $contexts->updateFields($context['id'], [
+			// Finished; save the updated entry.
+			if (!$oaiFailure) $installations->updateFields($installation['id'], [
 				'last_completed_update' => $db->formatTime(),
 				'last_error' => null
 			]);
 		} catch (Exception $e) {
+			// Re-wrap the exception; some types of exceptions can't be instantiated as the async library expects.
 			throw new Exception($e->getMessage());
 		}
 	});
@@ -158,9 +156,10 @@ while ($pool->getInProgress()) $pool->wait(function($pool) use ($options) {
 if (!$options['quiet']) {
 	echo "\nFinished!\n";
 	if ($options['oaiUrl']) {
-		foreach ($contexts->getAll() as $context) {
-			$context = (array) $context;
-			if ($context['oai_url'] == $options['oaiUrl']) print_r($context);
+		$installations = new Installations($db);
+		foreach ($installations->getAll() as $installation) {
+			$installation = (array) $installation;
+			if ($installation['oai_url'] == $options['oaiUrl']) print_r($installation);
 		}
 	}
 }

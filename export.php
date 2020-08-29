@@ -1,19 +1,22 @@
 <?php
 
-require('vendor/autoload.php');
+require_once('vendor/autoload.php');
+require_once('classes/Contexts.inc.php');
 
-require_once('classes/BeaconList.inc.php');
-$beaconList = new BeaconList();
-$entries = $beaconList->getEntries();
+$db = new BeaconDatabase();
+$contexts = new Contexts($db);
+$records = $contexts->getAll();
+
 $fp = fopen('php://stdout', 'w');
 
 // Export column headers
-$entry = $entries->shift();
-if (!$entry) throw new Exception('No entries are currenty recorded!');
-fputcsv($fp, array_keys((array) $entry));
+$context = $records->shift();
+if (!$context) throw new Exception('No beacon data is currently recorded!');
+fputcsv($fp, array_keys((array) $context));
 
 // Export the table contents
 do {
-	fputcsv($fp, (array) $entry);
-} while ($entry = $entries->shift());
+	fputcsv($fp, (array) $context);
+} while ($context = $records->shift());
+
 fclose($fp);

@@ -1,6 +1,7 @@
 <?php
 
-require('vendor/autoload.php');
+require_once('vendor/autoload.php');
+require_once('classes/Installations.inc.php');
 
 const pathToApplicationMap = [
 	'/ojs/xml/ojs-version.xml' => 'ojs',
@@ -12,15 +13,11 @@ $options = [
 	'scriptName' => array_shift($argv),
 	'quiet' => false,
 	'inputFile' => 'php://stdin',
-	'createSchema' => false,
 ];
 while ($option = array_shift($argv)) switch ($option) {
 	case '-q':
 	case '--quiet':
 		$options['quiet'] = true;
-		break;
-	case '-c':
-		$options['createSchema'] = true;
 		break;
 	case '-f':
 		$options['inputFile'] = $c = array_shift($options);
@@ -32,13 +29,13 @@ while ($option = array_shift($argv)) switch ($option) {
 	default:
 		echo "Usage: " . $options['scriptName'] . "
 		-h, -usage: Display usage information
+		-f <filename>: Read log entries from the specified filename
 		-q, --quiet: Execute quietly (without status display)\n";
 		exit(-1);
 }
 
-require_once('classes/BeaconList.inc.php');
-$beaconList = new BeaconList();
-if ($options['createSchema']) $beaconList->createSchema();
+$db = new BeaconDatabase();
+$installations = new Installations($db);
 
 $stats = [
 	'ojsLogCount' => 0, 'ompLogCount' => 0, 'opsLogCount' => 0,
@@ -50,6 +47,11 @@ $parser = new \Kassner\LogParser\LogParser();
 $parser->setFormat('%h %l %u %t "%r" %>s %b "%{Referer}i" \"%{User-Agent}i"');
 $fp = fopen($options['inputFile'], 'r');
 if (!$fp) throw new Exception('Could not open input file!');
+
+// This is used to cache mappings from disambiguators to IDs.
+$disambiguatorIdCache = [];
+// This is used to store latest-encountered dates, batching updates at the end for performance.
+$newestDates = [];
 
 while ($line = fgets($fp)) {
 	$stats['totalLogCount']++;
@@ -68,11 +70,11 @@ while ($line = fgets($fp)) {
 	$stats[$application . 'LogCount']++;
 	$stats['totalBeaconCount']++;
 	if (!$options['quiet'] && $stats['totalBeaconCount']%100 == 0) {
-		echo $stats['totalBeaconCount'] . ' beacons (' . $beaconList->getCount() . ' unique) on ' . $stats['totalLogCount'] . " lines...\r";
+		echo $stats['totalBeaconCount'] . ' beacons (' . $installations->getCount() . ' unique) on ' . $stats['totalLogCount'] . " lines...\r";
 	}
 
 	parse_str($url['query'] ?? '', $query);
-	if (!$beaconId = $beaconList->getBeaconIdFromQuery($application, $query)) {
+	if (!$disambiguator = $installations->getDisambiguatorFromQuery($query)) {
 		// A unique ID could not be determined; count for stats and skip further processing.
 		$stats['beaconDisabledLogCount']++;
 		continue;
@@ -86,23 +88,38 @@ while ($line = fgets($fp)) {
 		}
 	}
 
-	// Look for an existing beacon entry by ID.
-	$beaconEntry = $beaconList->find($beaconId);
-	if (!$beaconEntry) {
+	// Look for an existing installation ID by disambiguator (cached if possible).
+	$installationId = null;
+	if (isset($disambiguatorIdCache[$disambiguator])) {
+		$installationId = $disambiguatorIdCache[$disambiguator];
+	} elseif ($installation = $installations->find($disambiguator)) {
+		$installationId = $installation['id'];
+		$newestDates[$installationId] = strtotime($installation['last_beacon']);
+		$disambiguatorIdCache[$disambiguator] = $installationId;
+	}
+
+	if (!$installationId) {
 		// Create a new beacon entry.
-		$beaconList->addFromQuery($application, $entry->HeaderUserAgent, $query, strtotime($entry->time));
+		$installations->addFromQuery($application, $entry->HeaderUserAgent, $query, strtotime($entry->time));
 		$stats['newAdditions']++;
 	} else {
-		// Update the existing beacon entry.
-		$beaconList->updateFields($beaconId, ['last_beacon' => $beaconList->formatTime(strtotime($entry->time))]);
+		// Prepare to store the latest beacon ping date.
+		$newestDates[$installationId] = max(strtotime($entry->time), $newestDates[$installationId]);
 		$stats['returningBeacons']++;
 	}
 }
 fclose($fp);
 
+if (!$options['quiet']) echo "                                                    \rStoring dates...\r";
+
+// Store the newest ping dates.
+foreach ($newestDates as $installationId => $date) {
+	$installations->updateFields($installationId, ['last_beacon' => $db->formatTime($date)]);
+}
+
+
 if (!$options['quiet']) {
-	echo "                                                    \r";
-	echo "Statistics: ";
+	echo "                \rStatistics: ";
 	print_r($stats);
 }
 

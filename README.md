@@ -5,15 +5,16 @@ The tools in this repository provide data harvesting using the PKP Beacon, a lig
 To install the tool:
 - Clone the repository locally
 - Install composer dependencies: `composer install`
-- Create an empty database called "beacon" (username=beacon, password=beacon) [FIXME]
-- Create the database schema by running `php processBeaconLog.php -c`
+- Create an empty database called "beacon" (username=beacon, password=beacon). (This can be overridden using environment variables.)
+- Create the database schema by running `php manage.php -c
 
 ## Usage
 
-There are two stages involved in processing the beacon data:
+There are three stages involved in processing the beacon data:
 
-1. Parsing the access logs
-2. Processing the beacon list
+1. Parsing the access logs for installations
+2. Extracting the list of contexts (e.g. journals) from the installations
+3. Updating the beacon data for each context.
 
 ### Parsing the access logs
 
@@ -25,15 +26,25 @@ php processBeaconLog.php -h
 
 This is a single-threaded tool that can handle a large number of log entries relatively quickly.
 
+### Extracting the context list
+
+To extract the context list, use the tool `extractContexts.php`. For usage information, run:
+
+```
+php extractContexts.php -h
+```
+
+This is a multi-threaded tool that allows potentially several minutes for each beacon entry. Timeouts, concurrency, etc. are all configurable. Records can be selected for update by OAI URL. See the usage information for details.
+
 ### Processing the beacon list
 
-To process the beacon list and query the installations there for more information, use the tool `processBeaconLog.php`. For usage information, run:
+To update the beacon data for each context, use the tool `updateBeacon.php`. For usage information, run:
 
 ```
 php updateBeacon.php -h
 ```
 
-This is a multi-threaded tool that allows potentially several minutes for each beacon entry. Timeouts, concurrency, etc. are all configurable. Single records can be selected for update by OAI URL. See the usage information for details.
+This is a multi-threaded tool that allows potentially several minutes for each beacon entry. Timeouts, concurrency, etc. are all configurable. Records can be selected for update by OAI URL. See the usage information for details.
 
 ### Extracting the data
 
