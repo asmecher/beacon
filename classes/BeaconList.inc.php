@@ -114,7 +114,7 @@ class BeaconList {
 	 * @return string
 	 */
 	static public function formatTime($time = null) {
-		return strftime('%Y-%m-%d', $time ?? time());
+		return strftime('%Y-%m-%d %T', $time ?? time());
 	}
 
 	/**
