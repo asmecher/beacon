@@ -13,11 +13,12 @@ class Contexts {
 	 * Get the list of context entries.
 	 * @return Iterator
 	 */
-	public function getAll() {
-		return $this->_db->getCapsule()->table('contexts')
+	public function getAll($randomOrder = false) {
+		$query = $this->_db->getCapsule()->table('contexts')
 			->join('endpoints', 'contexts.endpoint_id', '=', 'endpoints.id')
-			->select('contexts.*', 'endpoints.oai_url', 'endpoints.application', 'endpoints.version', 'endpoints.admin_email')
-			->get();
+			->select('contexts.*', 'endpoints.oai_url', 'endpoints.application', 'endpoints.version', 'endpoints.admin_email');
+		if ($randomOrder) $query->inRandomOrder();
+		return $query->get();
 	}
 
 	/**

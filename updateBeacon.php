@@ -66,7 +66,7 @@ $statistics = [
 	'selected' => 0, 'skipped' => 0, 'total' => 0
 ];
 
-foreach ($contexts->getAll() as $context) {
+foreach ($contexts->getAll(true) as $context) {
 	$context = (array) $context;
 
 	// Select only the desired entries for task queueing.
