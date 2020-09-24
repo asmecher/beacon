@@ -10,13 +10,13 @@ class Contexts {
 	}
 
 	/**
-	 * Get the list of installation entries.
+	 * Get the list of context entries.
 	 * @return Iterator
 	 */
 	public function getAll() {
 		return $this->_db->getCapsule()->table('contexts')
-			->join('installations', 'contexts.installation_id', '=', 'installations.id')
-			->select('contexts.*', 'installations.oai_url', 'installations.application', 'installations.version', 'installations.admin_email')
+			->join('endpoints', 'contexts.endpoint_id', '=', 'endpoints.id')
+			->select('contexts.*', 'endpoints.oai_url', 'endpoints.application', 'endpoints.version', 'endpoints.admin_email')
 			->get();
 	}
 
@@ -31,14 +31,14 @@ class Contexts {
 
 	/**
 	 * Add a new entry from the specified query.
-	 * @param $installationId int Application ID
+	 * @param $endpointId int Application ID
 	 * @param $setSpec string OAI set specifier
 	 * @return array New context entry.
 	 */
-	public function add($installationId, $setSpec) {
+	public function add($endpointId, $setSpec) {
 		$this->_db->getCapsule()->table('contexts')->insert($entry = [
 			'set_spec' => $setSpec,
-			'installation_id' => $installationId,
+			'endpoint_id' => $endpointId,
 		]);
 		return $entry;
 	}
@@ -55,10 +55,10 @@ class Contexts {
 	}
 
 	/**
-	 * Delete all contexts for an installation.
-	 * @param $installationId int Numeric ID of the installation.
+	 * Delete all contexts for an endpoint.
+	 * @param $endpointId int Numeric ID of the endpoint.
 	 */
-	public function flushByInstallationId(int $installationId) {
-		$this->_db->getCapsule()->table('contexts')->where('installation_id', '=', $installationId)->delete();
+	public function flushByEndpointId(int $endpointId) {
+		$this->_db->getCapsule()->table('contexts')->where('endpoint_id', '=', $endpointId)->delete();
 	}
 }

@@ -1,7 +1,7 @@
 <?php
 
 require_once('vendor/autoload.php');
-require_once('classes/Installations.inc.php');
+require_once('classes/Endpoints.inc.php');
 
 const pathToApplicationMap = [
 	'/ojs/xml/ojs-version.xml' => 'ojs',
@@ -35,7 +35,7 @@ while ($option = array_shift($argv)) switch ($option) {
 }
 
 $db = new BeaconDatabase();
-$installations = new Installations($db);
+$endpoints = new Endpoints($db);
 
 $stats = [
 	'ojsLogCount' => 0, 'ompLogCount' => 0, 'opsLogCount' => 0,
@@ -70,41 +70,48 @@ while ($line = fgets($fp)) {
 	$stats[$application . 'LogCount']++;
 	$stats['totalBeaconCount']++;
 	if (!$options['quiet'] && $stats['totalBeaconCount']%100 == 0) {
-		echo $stats['totalBeaconCount'] . ' beacons (' . $installations->getCount() . ' unique) on ' . $stats['totalLogCount'] . " lines...\r";
+		echo $stats['totalBeaconCount'] . ' beacons (' . $endpoints->getCount() . ' unique) on ' . $stats['totalLogCount'] . " lines...\r";
 	}
 
 	parse_str($url['query'] ?? '', $query);
-	if (!$disambiguator = $installations->getDisambiguatorFromQuery($query)) {
+	if (!$disambiguator = $endpoints->getDisambiguatorFromQuery($query)) {
 		// A unique ID could not be determined; count for stats and skip further processing.
 		$stats['beaconDisabledLogCount']++;
 		continue;
 	}
 
 	// Avoid excluded OAI URL forms
-	foreach (['/localhost/', '/127\.0\.0\.1/', '/10\/0\/0\.1/'] as $exclusion) {
+	foreach ([
+		'/localhost/',
+		'/[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/', // IP addresses
+		'/test/',
+		'/demo[^s]/', // Avoid skipping Greek sociology
+		'/theme/',
+		'/\.softaculous\.com/', // Demos
+	] as $exclusion) {
 		if (preg_match($exclusion, $query['oai'])) {
 			$stats['excludedCount']++;
 			continue 2;
 		}
 	}
 
-	// Look for an existing installation ID by disambiguator (cached if possible).
-	$installationId = null;
+	// Look for an existing endpoint ID by disambiguator (cached if possible).
+	$endpointId = null;
 	if (isset($disambiguatorIdCache[$disambiguator])) {
-		$installationId = $disambiguatorIdCache[$disambiguator];
-	} elseif ($installation = $installations->find($disambiguator)) {
-		$installationId = $installation['id'];
-		$newestDates[$installationId] = strtotime($installation['last_beacon']);
-		$disambiguatorIdCache[$disambiguator] = $installationId;
+		$endpointId = $disambiguatorIdCache[$disambiguator];
+	} elseif ($endpoint = $endpoints->find($disambiguator)) {
+		$endpointId = $endpoint['id'];
+		$newestDates[$endpointId] = strtotime($endpoint['last_beacon']);
+		$disambiguatorIdCache[$disambiguator] = $endpointId;
 	}
 
-	if (!$installationId) {
+	if (!$endpointId) {
 		// Create a new beacon entry.
-		$installations->addFromQuery($application, $entry->HeaderUserAgent, $query, strtotime($entry->time));
+		$endpoints->addFromQuery($application, $entry->HeaderUserAgent, $query, strtotime($entry->time));
 		$stats['newAdditions']++;
 	} else {
 		// Prepare to store the latest beacon ping date.
-		$newestDates[$installationId] = max(strtotime($entry->time), $newestDates[$installationId]);
+		$newestDates[$endpointId] = max(strtotime($entry->time), $newestDates[$endpointId]);
 		$stats['returningBeacons']++;
 	}
 }
@@ -113,8 +120,8 @@ fclose($fp);
 if (!$options['quiet']) echo "                                                    \rStoring dates...\r";
 
 // Store the newest ping dates.
-foreach ($newestDates as $installationId => $date) {
-	$installations->updateFields($installationId, ['last_beacon' => $db->formatTime($date)]);
+foreach ($newestDates as $endpointId => $date) {
+	$endpoints->updateFields($endpointId, ['last_beacon' => $db->formatTime($date)]);
 }
 
 

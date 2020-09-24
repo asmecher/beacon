@@ -38,7 +38,7 @@ while ($option = array_shift($argv)) switch ($option) {
 		exit(-1);
 }
 
-if (!$options['flush'] && !$options['createSchema'] && !$options['dropSchema']) throw new Exception('No command specfied.');
+if (!$options['flush'] && !$options['createSchema'] && !$options['dropSchema']) throw new Exception('No command specfied. Try the -h option for help.');
 
 $db = new BeaconDatabase();
 if ($options['dropSchema']) {

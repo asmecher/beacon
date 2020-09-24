@@ -1,7 +1,7 @@
 <?php
 
 require_once('vendor/autoload.php');
-require_once('classes/Installations.inc.php');
+require_once('classes/Endpoints.inc.php');
 require_once('classes/Contexts.inc.php');
 require_once('classes/Beacon.inc.php');
 
@@ -92,7 +92,7 @@ foreach ($contexts->getAll() as $context) {
 			$db = new BeaconDatabase();
 			$contexts = new Contexts($db);
 
-			$endpoint = new \Phpoaipmh\Endpoint(new Phpoaipmh\Client($context['oai_url'], new \Phpoaipmh\HttpAdapter\GuzzleAdapter(new \GuzzleHttp\Client([
+			$oaiEndpoint = new \Phpoaipmh\Endpoint(new Phpoaipmh\Client($context['oai_url'], new \Phpoaipmh\HttpAdapter\GuzzleAdapter(new \GuzzleHttp\Client([
 				'headers' => ['User-Agent' => 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:79.0) Gecko/20100101 Firefox/79.0'],
 				'timeout' => $options['requestTimeout'],
 			]))));
@@ -100,7 +100,7 @@ foreach ($contexts->getAll() as $context) {
 
 			// Use an OAI ListRecords request to get the ISSN.
 			if ($context['issn'] === null) try {
-				$records = $endpoint->listRecords('oai_dc', null, null, $context['set_spec']);
+				$records = $oaiEndpoint->listRecords('oai_dc', null, null, $context['set_spec']);
 				$contexts->updateFields($context['id'], ['total_record_count' => $records->getTotalRecordCount()]);
 				foreach ($records as $record) {
 					if ($record->metadata->getName() === '') continue;
@@ -127,10 +127,12 @@ foreach ($contexts->getAll() as $context) {
 			// Fetch the country using the ISSN.
 			if ($context['issn'] !== null && $context['country'] === null) try {
 				$client = new GuzzleHttp\Client();
-				$response = $client->request('GET', 'https://portal.issn.org/api/search?search[]=MUST=allissnbis=%22' . $context['issn'] . '%22');
-				$matches = null;
-				if (preg_match('/<p><span>Country: <\/span>([^<]*)<\/p>/', $response->getBody(), $matches)) {
-					$contexts->updateFields($context['id'], ['country' => $matches[1]]);
+				$response = $client->request('GET', 'https://portal.issn.org/resource/ISSN/' . urlencode($context['issn']) . '?format=json');
+				$jsonResponse = json_decode($response->getBody(), true);
+				if ($jsonResponse && $country = array_reduce($jsonResponse['@graph'], function($carry, $item) {
+					return strpos($item['@id'], 'http://id.loc.gov/vocabulary/countries/') !== false ? $item['label'] : $carry;
+				})) {
+					$contexts->updateFields($context['id'], ['country' => $country]);
 				}
 			} catch (Exception $e) {
 				$contexts->updateFields($context['id'], [

@@ -1,7 +1,7 @@
 <?php
 
 require_once('vendor/autoload.php');
-require_once('classes/Installations.inc.php');
+require_once('classes/Endpoints.inc.php');
 require_once('classes/Beacon.inc.php');
 
 $options = [
@@ -44,7 +44,7 @@ while ($option = array_shift($argv)) switch ($option) {
 		echo "Usage: " . $options['scriptName'] . "
 		-h, -usage: Display usage information
 		-q, --quiet: Execute quietly (without status display)\n
-		--oai http://...: Select the installation with the specified OAI URL to update
+		--oai http://...: Select the endpoint(s) with the specified OAI URL to update
 		--timeout <n>: Set timeout per task <n> seconds (default " . Beacon::DEFAULT_TASK_TIMEOUT . ")
 		--requestTimeout <n>: Set timeout per HTTP request to <n> seconds (default " . Beacon::DEFAULT_REQUEST_TIMEOUT . ")
 		--minTimeBetween <n>: Set the minimum time in seconds between updates (default 1 week)
@@ -55,7 +55,7 @@ while ($option = array_shift($argv)) switch ($option) {
 if (!$options['quiet']) echo "Queuing processes...\r";
 
 $db = new BeaconDatabase();
-$installations = new Installations($db);
+$endpoints = new Endpoints($db);
 $pool = Spatie\Async\Pool::create()
 	->concurrency($options['concurrency'])
 	->timeout($options['timeout'])
@@ -65,35 +65,35 @@ $statistics = [
 	'selected' => 0, 'skipped' => 0, 'total' => 0
 ];
 
-foreach ($installations->getAll() as $installation) {
-	$installation = (array) $installation;
+foreach ($endpoints->getAll() as $endpoint) {
+	$endpoint = (array) $endpoint;
 
-	// Select only the desired installations for task queueing.
+	// Select only the desired endpoint for task queueing.
 	$statistics['total']++;
 	if (!empty($options['oaiUrl'])) {
 		// If a specific OAI URL was specified, update that record.
-		if ($installation['oai_url'] != $options['oaiUrl']) {
+		if ($endpoint['oai_url'] != $options['oaiUrl']) {
 			$statistics['skipped']++;
 			continue;
 		}
 		else $statistics['selected']++;
 	} else {
 		// Default: skip anything that was updated successfully in the last week.
-		if (time() - strtotime($installation['last_completed_update']) < $options['minimumSecondsBetweenUpdates']) {
+		if (time() - strtotime($endpoint['last_completed_update']) < $options['minimumSecondsBetweenUpdates']) {
 			$statistics['skipped']++;
 			continue;
 		}
 	}
 
-	$pool->add(function() use ($installation, $options) {
+	$pool->add(function() use ($endpoint, $options) {
 		try {
-			require_once('classes/Installations.inc.php');
+			require_once('classes/Endpoints.inc.php');
 			require_once('classes/Contexts.inc.php');
 			$db = new BeaconDatabase();
-			$installations = new Installations($db);
-			$disambiguator = $installation['disambiguator'];
+			$endpoints = new Endpoints($db);
+			$disambiguator = $endpoint['disambiguator'];
 
-			$endpoint = new \Phpoaipmh\Endpoint(new Phpoaipmh\Client($installation['oai_url'], new \Phpoaipmh\HttpAdapter\GuzzleAdapter(new \GuzzleHttp\Client([
+			$oaiEndpoint = new \Phpoaipmh\Endpoint(new Phpoaipmh\Client($endpoint['oai_url'], new \Phpoaipmh\HttpAdapter\GuzzleAdapter(new \GuzzleHttp\Client([
 				'headers' => ['User-Agent' => 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:79.0) Gecko/20100101 Firefox/79.0'],
 				'timeout' => $options['requestTimeout'],
 			]))));
@@ -101,43 +101,46 @@ foreach ($installations->getAll() as $installation) {
 
 			// Use an OAI Identify request to get the admin email and test OAI.
 			try {
-				$result = $endpoint->identify();
+				$result = $oaiEndpoint->identify();
 				if ($result->Identify->baseURL) {
-					$installations->updateFields($installation['id'], [
+					$endpoints->updateFields($endpoint['id'], [
 						'last_oai_response' => $db->formatTime(),
-						'admin_email' => $result->Identify->adminEmail
+						'admin_email' => $result->Identify->adminEmail,
+						'earliest_datestamp' => $db->formatTime(strtotime($result->Identify->earliestDatestamp)),
+						'repository_name' => $result->Identify->repositoryName,
+						'admin_email' => $result->Identify->adminEmail,
 					]);
 				}
 				else $oaiFailure = true;
 			} catch (Exception $e) {
-				$installations->updateFields($installation['id'], [
-					'last_error' => 'Identify: ' . $e->getMessage(),
-					'errors' => ++$installation['errors'],
+				$endpoints->updateFields($endpoint['id'], [
+					'last_error' => 'Identify: ' . mb_convert_encoding($e->getMessage(), 'UTF-8', 'UTF-8'), // Remove invalid UTF-8, e.g. in the case of a 404
+					'errors' => ++$endpoint['errors'],
 				]);
 				$oaiFailure = true;
 			}
 
 			// List sets and populate the context list.
 			if (!$oaiFailure) try {
-				$sets = $endpoint->listSets();
+				$sets = $oaiEndpoint->listSets();
 				$contexts = new Contexts($db);
-				$contexts->flushByInstallationId($installation['id']);
+				$contexts->flushByEndpointId($endpoint['id']);
 				foreach ($sets as $set) {
 					// Skip anything that looks like a journal section
 					if (strstr($set->setSpec, ':') !== false) continue;
 
-					$contexts->add($installation['id'], $set->setSpec);
+					$contexts->add($endpoint['id'], $set->setSpec);
 				}
 			} catch (Exception $e) {
-				$installations->updateFields($installation['id'], [
+				$endpoints->updateFields($endpoint['id'], [
 					'last_error' => 'ListSets: ' . $e->getMessage(),
-					'errors' => ++$installation['errors'],
+					'errors' => ++$endpoint['errors'],
 				]);
 				$oaiFailure = true;
 			}
 
 			// Finished; save the updated entry.
-			if (!$oaiFailure) $installations->updateFields($installation['id'], [
+			if (!$oaiFailure) $endpoints->updateFields($endpoint['id'], [
 				'last_completed_update' => $db->formatTime(),
 				'last_error' => null
 			]);
@@ -156,10 +159,10 @@ while ($pool->getInProgress()) $pool->wait(function($pool) use ($options) {
 if (!$options['quiet']) {
 	echo "\nFinished!\n";
 	if ($options['oaiUrl']) {
-		$installations = new Installations($db);
-		foreach ($installations->getAll() as $installation) {
-			$installation = (array) $installation;
-			if ($installation['oai_url'] == $options['oaiUrl']) print_r($installation);
+		$endpoints = new Endpoints($db);
+		foreach ($endpoints->getAll() as $endpoint) {
+			$endpoint = (array) $endpoint;
+			if ($endpoint['oai_url'] == $options['oaiUrl']) print_r($endpoint);
 		}
 	}
 }

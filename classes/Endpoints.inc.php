@@ -2,7 +2,7 @@
 
 require_once('BeaconDatabase.inc.php');
 
-class Installations {
+class Endpoints {
 	protected $_db;
 
 	function __construct(BeaconDatabase $db) {
@@ -15,33 +15,41 @@ class Installations {
 	 * @param $query array
 	 */
 	public function getDisambiguatorFromQuery($query) {
-		// WARNING: This will undercount installations that were duplicated e.g. for splitting journals!
-		return $query['id'] ?? null;
+		// WARNING: This will undercount endpoints that were duplicated e.g. for splitting journals!
+		$url = $query['oai']??null;
+		if ($url === null || $url == '') return null;
+		if (!isset($query['id']) || $query['id'] == '') return null;
+
+		// Clean up URL parts
+		$url = preg_replace('/http[s]?:\/\//','//', $url); // Make URL protocol-relative
+		$url = preg_replace('/www\./','//', $url); // Remove "www." from domain
+
+		return $query['id'] . '-' . $url;
 	}
 
 	/**
-	 * Get the list of installation entries.
+	 * Get the list of endpoint entries.
 	 * @return Iterator
 	 */
 	public function getAll() {
-		return $this->_db->getCapsule()->table('installations')->get();
+		return $this->_db->getCapsule()->table('endpoints')->get();
 	}
 
 	/**
-	 * Find an installation by disambiguator.
-	 * @param $installationId string Disambiguator
-	 * @return array|null Installation characteristics, or null if not found.
+	 * Find an endpoint by disambiguator.
+	 * @param $endpointId string Disambiguator
+	 * @return array|null Endpoint characteristics, or null if not found.
 	 */
 	public function find($disambiguator) {
-		return (array) $this->_db->getCapsule()->table('installations')->where('disambiguator', '=', $disambiguator)->get()->first();
+		return (array) $this->_db->getCapsule()->table('endpoints')->where('disambiguator', '=', $disambiguator)->get()->first();
 	}
 
 	/**
-	 * Get the count of unique installations.
+	 * Get the count of unique endpoints.
 	 * @return int
 	 */
 	public function getCount() {
-		return $this->_db->getCapsule()->table('installations')->count();
+		return $this->_db->getCapsule()->table('endpoints')->count();
 	}
 
 	/**
@@ -53,7 +61,7 @@ class Installations {
 	 */
 	public function addFromQuery($application, $version, $query, $time) {
 		$disambiguator = $this->getDisambiguatorFromQuery($query);
-		$this->_db->getCapsule()->table('installations')->insert($entry = [
+		$this->_db->getCapsule()->table('endpoints')->insert($entry = [
 			'application' => $application,
 			'version' => $version,
 			'disambiguator' => $disambiguator,
@@ -67,12 +75,12 @@ class Installations {
 
 	/**
 	 * Update fields in an entry and save the resulting beacon list.
-	 * @param $installationId string The ID of the installation to update
+	 * @param $endpointId string The ID of the endpoint to update
 	 * @param $fields array Optional extra data to include in the entry
 	 */
-	public function updateFields(int $installationId, array $fields = []) {
-		$this->_db->getCapsule()->table('installations')
-			->where('id', '=', $installationId)
+	public function updateFields(int $endpointId, array $fields = []) {
+		$this->_db->getCapsule()->table('endpoints')
+			->where('id', '=', $endpointId)
 			->update($fields);
 	}
 }

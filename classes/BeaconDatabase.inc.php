@@ -35,7 +35,7 @@ class BeaconDatabase {
 	 * Create the database schema.
 	 */
 	public function createSchema() {
-		$this->getCapsule()->schema()->create('installations', function($table) {
+		$this->getCapsule()->schema()->create('endpoints', function($table) {
 			$table->id();
 			$table->string('application');
 			$table->string('version');
@@ -46,14 +46,16 @@ class BeaconDatabase {
 			$table->datetime('last_beacon');
 			$table->datetime('last_oai_response')->nullable();
 			$table->string('admin_email')->nullable();
+			$table->datetime('earliest_datestamp')->nullable();
+			$table->string('repository_name')->nullable();
 			$table->datetime('last_completed_update')->nullable();
 			$table->integer('errors')->default(0);
 			$table->mediumText('last_error')->nullable();
 		});
 		$this->getCapsule()->schema()->create('contexts', function($table) {
 			$table->id();
-			$table->foreignId('installation_id');
-			$table->foreign('installation_id')->references('id')->on('installations');
+			$table->foreignId('endpoint_id');
+			$table->foreign('endpoint_id')->references('id')->on('endpoints');
 			$table->string('set_spec');
 			$table->string('issn')->nullable();
 			$table->string('country')->nullable();
@@ -69,7 +71,7 @@ class BeaconDatabase {
 	 */
 	public function dropSchema() {
 		$this->getCapsule()->schema()->dropIfExists('contexts');
-		$this->getCapsule()->schema()->dropIfExists('installations');
+		$this->getCapsule()->schema()->dropIfExists('endpoints');
 	}
 
 	/**
@@ -77,7 +79,7 @@ class BeaconDatabase {
 	 */
 	public function flush() {
 		$this->getCapsule()->table('contexts')->delete();
-		$this->getCapsule()->table('installations')->delete();
+		$this->getCapsule()->table('endpoints')->delete();
 	}
 
 	/**
