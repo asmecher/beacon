@@ -91,7 +91,6 @@ foreach ($endpoints->getAll() as $endpoint) {
 			require_once('classes/Contexts.inc.php');
 			$db = new BeaconDatabase();
 			$endpoints = new Endpoints($db);
-			$disambiguator = $endpoint['disambiguator'];
 
 			$oaiEndpoint = new \Phpoaipmh\Endpoint(new Phpoaipmh\Client($endpoint['oai_url'], new \Phpoaipmh\HttpAdapter\GuzzleAdapter(new \GuzzleHttp\Client([
 				'headers' => ['User-Agent' => 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:79.0) Gecko/20100101 Firefox/79.0'],
