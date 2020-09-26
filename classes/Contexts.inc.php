@@ -16,7 +16,19 @@ class Contexts {
 	public function getAll($randomOrder = false) {
 		$query = $this->_db->getCapsule()->table('contexts')
 			->join('endpoints', 'contexts.endpoint_id', '=', 'endpoints.id')
-			->select('contexts.*', 'endpoints.oai_url', 'endpoints.application', 'endpoints.version', 'endpoints.admin_email');
+			->select(
+				'contexts.*',
+				'endpoints.oai_url',
+				'endpoints.application',
+				'endpoints.version',
+				'endpoints.admin_email',
+				'endpoints.earliest_datestamp',
+				'endpoints.repository_name',
+				'endpoints.stats_id',
+				'endpoints.first_beacon',
+				'endpoints.last_beacon',
+				'endpoints.last_completed_update'
+		);
 		if ($randomOrder) $query->inRandomOrder();
 		return $query->get();
 	}
