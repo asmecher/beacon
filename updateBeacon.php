@@ -109,7 +109,7 @@ foreach ($contexts->getAll(true) as $context) {
 					$dc = $metadata->children('http://purl.org/dc/elements/1.1/');
 					if ($dc->getName() !== '') foreach ($dc->source as $source) {
 						$matches = null;
-						if (preg_match('^%(\d{4}\-\d{3}(\d|x|X))%$', $source, $matches)) {
+						if (preg_match('%^(\d{4}\-\d{3}(\d|x|X))$%', $source, $matches)) {
 							$context['issn'] = $matches[1];
 							$contexts->updateFields($context['id'], ['issn' => $matches[1]]);
 							break 2;
