@@ -11,7 +11,9 @@ $options = [
 	'concurrency' => Beacon::DEFAULT_CONCURRENCY,
 	'timeout' => Beacon::DEFAULT_TASK_TIMEOUT,
 	'requestTimeout' => Beacon::DEFAULT_REQUEST_TIMEOUT,
+	'processMemoryLimit' => Beacon::DEFAULT_PROCESS_MEMORY_LIMIT,
 	'minimumSecondsBetweenUpdates' => Beacon::DEFAULT_MINIMUM_SECONDS_BETWEEN_UPDATES,
+	'memoryLimit' => Beacon::DEFAULT_MEMORY_LIMIT,
 	'oaiUrl' => null,
 ];
 while ($option = array_shift($argv)) switch ($option) {
@@ -22,6 +24,14 @@ while ($option = array_shift($argv)) switch ($option) {
 	case '--oai':
 		$options['oaiUrl'] = array_shift($argv);
 		if (empty($options['oaiUrl'])) array_unshift($argv, '-h');
+		break;
+	case '--memory_limit':
+		$options['memoryLimit'] = $m = array_shift($argv);
+		if (empty($m) || !preg_match('/^[0-9]\+M$/', $m)) array_unshift($argv, '-h');
+		break;
+	case '--process_memory_limit':
+		$options['processMemoryLimit'] = $m = array_shift($argv);
+		if (empty($m) || !preg_match('/^[0-9]\+M$/', $m)) array_unshift($argv, '-h');
 		break;
 	case '--timeout':
 		$options['timeout'] = (int) $c = array_shift($argv);
@@ -46,12 +56,16 @@ while ($option = array_shift($argv)) switch ($option) {
 		-h, -usage: Display usage information
 		-q, --quiet: Execute quietly (without status display)\n
 		--oai http://...: Select the beacon entry with the specified OAI URL to update
+		--memory_limit <n>: Set memory limit for parent process to <n> (default " . Beacon::DEFAULT_MEMORY_LIMIT . ")
+		--process_memory_limit <n>: Set memory limit per task to <n> (default " . Beacon::DEFAULT_PROCESS_MEMORY_LIMIT . ")
 		--timeout <n>: Set timeout per task <n> seconds (default " . Beacon::DEFAULT_TASK_TIMEOUT . ")
 		--requestTimeout <n>: Set timeout per HTTP request to <n> seconds (default " . Beacon::DEFAULT_REQUEST_TIMEOUT . ")
 		--minTimeBetween <n>: Set the minimum time in seconds between updates (default 1 week)
 		--concurrency <n>: Set maximum concurrency to <n> simultaneous processes (default " . Beacon::DEFAULT_CONCURRENCY . ")\n";
 		exit(-1);
 }
+
+ini_set('memory_limit', Beacon::DEFAULT_MEMORY_LIMIT);
 
 if (!$options['quiet']) echo "Queuing processes...\r";
 
@@ -79,7 +93,7 @@ foreach ($contexts->getAll(true) as $context) {
 		}
 		else $statistics['selected']++;
 	} else {
-		// Default: skip anything that was updated successfully in the last week.
+		// Default: skip anything that was recently updated successfully.
 		if (time() - strtotime($context['last_completed_update']) < $options['minimumSecondsBetweenUpdates']) {
 			$statistics['skipped']++;
 			continue;
@@ -87,6 +101,7 @@ foreach ($contexts->getAll(true) as $context) {
 	}
 
 	$pool->add(function() use ($context, $options) {
+		ini_set('memory_limit', $options['processMemoryLimit']);
 		try {
 			require('classes/Contexts.inc.php');
 			$db = new BeaconDatabase();

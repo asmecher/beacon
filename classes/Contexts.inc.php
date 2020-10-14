@@ -26,8 +26,7 @@ class Contexts {
 				'endpoints.repository_name',
 				'endpoints.stats_id',
 				'endpoints.first_beacon',
-				'endpoints.last_beacon',
-				'endpoints.last_completed_update'
+				'endpoints.last_beacon'
 		);
 		if ($randomOrder) $query->inRandomOrder();
 		return $query->get();
