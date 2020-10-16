@@ -11,12 +11,14 @@ $records = $capsule->table('contexts')
 	->join('endpoints', 'contexts.endpoint_id', '=', 'endpoints.id')
 	->select(
 		Capsule::raw('GROUP_CONCAT(DISTINCT endpoints.oai_url SEPARATOR \'\n\') AS oai_url'),
-		'contexts.set_spec',
 		'endpoints.application',
 		'endpoints.version',
 		'endpoints.admin_email',
 		'endpoints.earliest_datestamp',
 		'endpoints.repository_name',
+		'contexts.set_spec',
+		Capsule::raw('MAX(contexts.issn) AS issn'),
+		Capsule::raw('MAX(contexts.country) AS country'),
 		Capsule::raw('MAX(endpoints.last_completed_update) AS last_completed_update'),
 		Capsule::raw('MIN(first_beacon) AS first_beacon'),
 		Capsule::raw('MAX(last_beacon) AS first_beacon'),
