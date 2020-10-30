@@ -1,12 +1,13 @@
 <?php
 
-require_once('BeaconDatabase.inc.php');
+require_once('Entity.inc.php');
 
-class Endpoints {
-	protected $_db;
-
-	function __construct(BeaconDatabase $db) {
-		$this->_db = $db;
+class Endpoints extends Entity {
+	/**
+	 * @copydoc Entity::getTableName()
+	 */
+	protected function getTableName() {
+		return 'endpoints';
 	}
 
 	/**
@@ -36,51 +37,10 @@ class Endpoints {
 	}
 
 	/**
-	 * Find an endpoint by disambiguator.
-	 * @param $endpointId string Disambiguator
-	 * @return array|null Endpoint characteristics, or null if not found.
-	 */
-	public function find($disambiguator) {
-		return (array) $this->_db->getCapsule()->table('endpoints')->where('disambiguator', '=', $disambiguator)->get()->first();
-	}
-
-	/**
 	 * Get the count of unique endpoints.
 	 * @return int
 	 */
 	public function getCount() {
 		return $this->_db->getCapsule()->table('endpoints')->count();
-	}
-
-	/**
-	 * Add a new entry from the specified query.
-	 * @param $application string
-	 * @param $query array
-	 * @param $time int
-	 * @return array New beacon entry.
-	 */
-	public function addFromQuery($application, $version, $query, $time) {
-		$disambiguator = $this->getDisambiguatorFromQuery($query);
-		$this->_db->getCapsule()->table('endpoints')->insert($entry = [
-			'application' => $application,
-			'version' => $version,
-			'disambiguator' => $disambiguator,
-			'oai_url' => $query['oai'],
-			'stats_id' => $query['id'],
-			'first_beacon' => $this->_db->formatTime($time),
-			'last_beacon' => $this->_db->formatTime($time),
-		]);
-		return $entry;
-	}
-
-	/**
-	 * Update fields in an entry and save the resulting beacon list.
-	 * @param $endpointId string The ID of the endpoint to update
-	 * @param $fields array Optional extra data to include in the entry
-	 */
-	public function updateFields(int $endpointId, array $fields = []) {
-		$this->_db->getCapsule()->table('endpoints')
-			->where('id', '=', $endpointId)
-			->update($fields);
 	}
 }

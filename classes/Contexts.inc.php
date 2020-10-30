@@ -1,16 +1,18 @@
 <?php
 
-require_once('BeaconDatabase.inc.php');
+require_once('Entity.inc.php');
 
-class Contexts {
-	protected $_db;
-
-	function __construct(BeaconDatabase $db) {
-		$this->_db = $db;
+class Contexts extends Entity {
+	/**
+	 * @copydoc Entity::getTableName()
+	 */
+	protected function getTableName() {
+		return 'contexts';
 	}
 
 	/**
 	 * Get the list of context entries.
+	 * @param $randomOrder true iff the returned results should be randomly ordered; default false
 	 * @return Iterator
 	 */
 	public function getAll($randomOrder = false) {
@@ -30,40 +32,6 @@ class Contexts {
 		);
 		if ($randomOrder) $query->inRandomOrder();
 		return $query->get();
-	}
-
-	/**
-	 * Find a context by ID.
-	 * @param $id int Context ID
-	 * @return array|null Context characteristics, or null if not found.
-	 */
-	public function find(int $id) {
-		return (array) $this->_db->getCapsule()->table('contexts')->where('id', '=', $id)->get()->first();
-	}
-
-	/**
-	 * Add a new entry from the specified query.
-	 * @param $endpointId int Application ID
-	 * @param $setSpec string OAI set specifier
-	 * @return array New context entry.
-	 */
-	public function add($endpointId, $setSpec) {
-		$this->_db->getCapsule()->table('contexts')->insert($entry = [
-			'set_spec' => $setSpec,
-			'endpoint_id' => $endpointId,
-		]);
-		return $entry;
-	}
-
-	/**
-	 * Update fields in an entry and save the resulting beacon list.
-	 * @param $contextId int The ID of the context to update
-	 * @param $fields array Optional extra data to include in the entry
-	 */
-	public function updateFields(string $contextId, array $fields = []) {
-		$this->_db->getCapsule()->table('contexts')
-			->where('id', '=', $contextId)
-			->update($fields);
 	}
 
 	/**

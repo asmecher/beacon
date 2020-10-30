@@ -4,6 +4,7 @@
 	"caseyamcl/phpoaipmh": "^3.0",
         "guzzlehttp/guzzle":   "^6.3",
         "spatie/async": "^1.4",
-        "illuminate/database": "^7.26"
+        "illuminate/database": "^7.26",
+        "league/csv": "^9.6"
     }
 }

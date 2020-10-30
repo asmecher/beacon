@@ -4,6 +4,7 @@ use Illuminate\Database\Capsule\Manager as Capsule;
 
 class BeaconDatabase {
 	protected $_capsule;
+
 	/**
 	 * Constructor
 	 */
@@ -63,6 +64,23 @@ class BeaconDatabase {
 			$table->datetime('last_completed_update')->nullable();
 			$table->integer('errors')->default(0);
 			$table->mediumText('last_error')->nullable();
+
+			// There cannot be two contexts on the same endpoint with the same set specifier.
+			$table->unique(['endpoint_id', 'set_spec']);
+		});
+		$this->getCapsule()->schema()->create('count_spans', function($table) {
+			$table->id();
+			$table->foreignId('context_id');
+			$table->foreign('context_id')->references('id')->on('contexts');
+			$table->string('label');
+			$table->date('date_start');
+			$table->date('date_end');
+			$table->integer('record_count')->nullable();
+			$table->datetime('date_counted');
+			$table->mediumText('last_error')->nullable();
+
+			// Each label must uniquely identify a count span for a given context.
+			$table->unique(['context_id', 'label']);
 		});
 	}
 
@@ -70,16 +88,20 @@ class BeaconDatabase {
 	 * Drop the database schema.
 	 */
 	public function dropSchema() {
-		$this->getCapsule()->schema()->dropIfExists('contexts');
-		$this->getCapsule()->schema()->dropIfExists('endpoints');
+		$schema = $this->getCapsule()->schema();
+		$schema->dropIfExists('count_spans');
+		$schema->dropIfExists('contexts');
+		$schema->dropIfExists('endpoints');
 	}
 
 	/**
 	 * Flush the database contents
 	 */
 	public function flush() {
-		$this->getCapsule()->table('contexts')->delete();
-		$this->getCapsule()->table('endpoints')->delete();
+		$capsule = $this->getCapsule();
+		$capsule()->table('count_spans')->delete();
+		$capsule()->table('contexts')->delete();
+		$capsule()->table('endpoints')->delete();
 	}
 
 	/**

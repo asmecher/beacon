@@ -4,6 +4,15 @@ require_once('vendor/autoload.php');
 require_once('classes/Endpoints.inc.php');
 require_once('classes/Contexts.inc.php');
 require_once('classes/Beacon.inc.php');
+require_once('classes/CountSpans.inc.php');
+
+/**
+ * Establish some defaults for count spans.
+ * Each June 1st, we move to the last complete year.
+ */
+$currentYear = date('Y');
+$currentMonth = date('n');
+$lastCompleteYear = $currentMonth >= 6 ? $currentYear - 1 : $currentYear - 2;
 
 $options = [
 	'scriptName' => array_shift($argv),
@@ -15,6 +24,7 @@ $options = [
 	'minimumSecondsBetweenUpdates' => Beacon::DEFAULT_MINIMUM_SECONDS_BETWEEN_UPDATES,
 	'memoryLimit' => Beacon::DEFAULT_MEMORY_LIMIT,
 	'oaiUrl' => null,
+	'year' => $lastCompleteYear,
 ];
 while ($option = array_shift($argv)) switch ($option) {
 	case '-q':
@@ -45,6 +55,10 @@ while ($option = array_shift($argv)) switch ($option) {
 		$options['minimumSecondsBetweenUpdates'] = (int) $c = array_shift($argv);
 		if (!ctype_digit($c) || !$c) array_unshift($argv, '-h');
 		break;
+	case '--year':
+		$options['year'] = (int) $c = array_shift($argv);
+		if (!ctype_digit($c) || !$c) array_unshift($argv, '-h');
+		break;
 	case '--concurrency':
 		$options['concurrency'] = (int) $c = array_shift($argv);
 		if (!ctype_digit($c) || !$c) array_unshift($argv, '-h');
@@ -59,6 +73,7 @@ while ($option = array_shift($argv)) switch ($option) {
 		--memory_limit <n>: Set memory limit for parent process to <n> (default " . Beacon::DEFAULT_MEMORY_LIMIT . ")
 		--process_memory_limit <n>: Set memory limit per task to <n> (default " . Beacon::DEFAULT_PROCESS_MEMORY_LIMIT . ")
 		--timeout <n>: Set timeout per task <n> seconds (default " . Beacon::DEFAULT_TASK_TIMEOUT . ")
+		--year <n>: Set year to fetch record span for (default " . $lastCompleteYear . ")
 		--requestTimeout <n>: Set timeout per HTTP request to <n> seconds (default " . Beacon::DEFAULT_REQUEST_TIMEOUT . ")
 		--minTimeBetween <n>: Set the minimum time in seconds between updates (default 1 week)
 		--concurrency <n>: Set maximum concurrency to <n> simultaneous processes (default " . Beacon::DEFAULT_CONCURRENCY . ")\n";
@@ -116,7 +131,7 @@ foreach ($contexts->getAll(true) as $context) {
 			// Use an OAI ListRecords request to get the ISSN.
 			if ($context['issn'] === null) try {
 				$records = $oaiEndpoint->listRecords('oai_dc', null, null, $context['set_spec']);
-				$contexts->updateFields($context['id'], ['total_record_count' => $records->getTotalRecordCount()]);
+				$contexts->update($context['id'], ['total_record_count' => $records->getTotalRecordCount()]);
 				foreach ($records as $record) {
 					if ($record->metadata->getName() === '') continue;
 					$metadata = $record->metadata->children('http://www.openarchives.org/OAI/2.0/oai_dc/');
@@ -126,13 +141,13 @@ foreach ($contexts->getAll(true) as $context) {
 						$matches = null;
 						if (preg_match('%^(\d{4}\-\d{3}(\d|x|X))$%', $source, $matches)) {
 							$context['issn'] = $matches[1];
-							$contexts->updateFields($context['id'], ['issn' => $matches[1]]);
+							$contexts->update($context['id'], ['issn' => $matches[1]]);
 							break 2;
 						}
 					}
 				}
 			} catch (Exception $e) {
-				$contexts->updateFields($context['id'], [
+				$contexts->update($context['id'], [
 					'last_error' => 'ListRecords: ' . $e->getMessage(),
 					'errors' => ++$context['errors'],
 				]);
@@ -147,20 +162,57 @@ foreach ($contexts->getAll(true) as $context) {
 				if ($jsonResponse && $country = array_reduce($jsonResponse['@graph'], function($carry, $item) {
 					return strpos($item['@id'], 'http://id.loc.gov/vocabulary/countries/') !== false ? $item['label'] : $carry;
 				})) {
-					$contexts->updateFields($context['id'], ['country' => $country]);
+					$contexts->update($context['id'], ['country' => $country]);
 				}
 			} catch (Exception $e) {
-				$contexts->updateFields($context['id'], [
+				$contexts->update($context['id'], [
 					'last_error' => 'Get country: ' . $e->getMessage(),
 					'errors' => ++$context['errors'],
 				]);
 			}
 
+			require('classes/CountSpans.inc.php');
+			$countSpans = new CountSpans($db);
+			if (!$countSpans->find(['context_id' => $context['id'], 'label' => $options['year']])) {
+				// A count span was not found with the given characteristics. Get one.
+				$dateStart = new DateTime($options['year'] . '-01-01');
+				$dateEnd = new DateTime($options['year'] . '-12-31');
+				try {
+					$records = $oaiEndpoint->listRecords('oai_dc', $dateStart, $dateEnd, $context['set_spec']);
+					$countSpans->insert([
+						'context_id' => $context['id'],
+						'label' => $options['year'],
+						'record_count' => $records->getTotalRecordCount(),
+						'date_start' => $db->formatTime($dateStart->getTimestamp()),
+						'date_end' => $db->formatTime($dateEnd->getTimestamp()),
+						'date_counted' => $db->formatTime(),
+					]);
+				} catch (Exception $e) {
+					if (strstr($e->getMessage(), 'No matching records in this repository') !== false) {
+						$countSpans->insert([
+							'context_id' => $context['id'],
+							'label' => $options['year'],
+							'record_count' => 0,
+							'date_start' => $db->formatTime($dateStart->getTimestamp()),
+							'date_end' => $db->formatTime($dateEnd->getTimestamp()),
+							'date_counted' => $db->formatTime(),
+						]);
+					} else {
+						$contexts->update($context['id'], [
+							'last_error' => 'ListRecords for count span "' . $options['year'] . '": ' . $e->getMessage(),
+							'errors' => ++$context['errors'],
+						]);
+						$oaiFailure = true;
+					}
+				}
+			}
+
 			// Save the updated entry.
-			if (!$oaiFailure) $contexts->updateFields($context['id'], [
+			if (!$oaiFailure) $contexts->update($context['id'], [
 				'last_completed_update' => $db->formatTime(),
 				'last_error' => null
 			]);
+
 		} catch (Exception $e) {
 			throw new Exception($e->getMessage());
 		}

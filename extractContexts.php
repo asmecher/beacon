@@ -102,7 +102,7 @@ foreach ($endpoints->getAll() as $endpoint) {
 			try {
 				$result = $oaiEndpoint->identify();
 				if ($result->Identify->baseURL) {
-					$endpoints->updateFields($endpoint['id'], [
+					$endpoints->update($endpoint['id'], [
 						'last_oai_response' => $db->formatTime(),
 						'admin_email' => $result->Identify->adminEmail,
 						'earliest_datestamp' => $db->formatTime(strtotime($result->Identify->earliestDatestamp)),
@@ -112,7 +112,7 @@ foreach ($endpoints->getAll() as $endpoint) {
 				}
 				else $oaiFailure = true;
 			} catch (Exception $e) {
-				$endpoints->updateFields($endpoint['id'], [
+				$endpoints->update($endpoint['id'], [
 					'last_error' => 'Identify: ' . mb_convert_encoding($e->getMessage(), 'UTF-8', 'UTF-8'), // Remove invalid UTF-8, e.g. in the case of a 404
 					'errors' => ++$endpoint['errors'],
 				]);
@@ -123,15 +123,18 @@ foreach ($endpoints->getAll() as $endpoint) {
 			if (!$oaiFailure) try {
 				$sets = $oaiEndpoint->listSets();
 				$contexts = new Contexts($db);
-				$contexts->flushByEndpointId($endpoint['id']);
 				foreach ($sets as $set) {
 					// Skip anything that looks like a journal section
 					if (strstr($set->setSpec, ':') !== false) continue;
 
-					$contexts->add($endpoint['id'], $set->setSpec);
+					// If we appear to already have this context in the database, skip it.
+					if ($contexts->find(['endpoint_id' => $endpoint['id'], 'set_spec' => $set->setSpec])) continue;
+
+					// Add a new context entry to the database.
+					$contexts->insert(['endpoint_id' => $endpoint['id'], 'set_spec' => $set->setSpec]);
 				}
 			} catch (Exception $e) {
-				$endpoints->updateFields($endpoint['id'], [
+				$endpoints->update($endpoint['id'], [
 					'last_error' => 'ListSets: ' . $e->getMessage(),
 					'errors' => ++$endpoint['errors'],
 				]);
@@ -139,7 +142,7 @@ foreach ($endpoints->getAll() as $endpoint) {
 			}
 
 			// Finished; save the updated entry.
-			if (!$oaiFailure) $endpoints->updateFields($endpoint['id'], [
+			if (!$oaiFailure) $endpoints->update($endpoint['id'], [
 				'last_completed_update' => $db->formatTime(),
 				'last_error' => null
 			]);

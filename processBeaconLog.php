@@ -99,7 +99,7 @@ while ($line = fgets($fp)) {
 	$endpointId = null;
 	if (isset($disambiguatorIdCache[$disambiguator])) {
 		$endpointId = $disambiguatorIdCache[$disambiguator];
-	} elseif ($endpoint = $endpoints->find($disambiguator)) {
+	} elseif ($endpoint = $endpoints->find(['disambiguator' => $disambiguator])) {
 		$endpointId = $endpoint['id'];
 		$newestDates[$endpointId] = strtotime($endpoint['last_beacon']);
 		$disambiguatorIdCache[$disambiguator] = $endpointId;
@@ -107,7 +107,16 @@ while ($line = fgets($fp)) {
 
 	if (!$endpointId) {
 		// Create a new beacon entry.
-		$endpoints->addFromQuery($application, $entry->HeaderUserAgent, $query, strtotime($entry->time));
+		$time = $db->formatTime(strtotime($entry->time));
+		$endpoints->insert([
+			'application' => $application,
+			'version' => $entry->HeaderUserAgent,
+			'disambiguator' => $endpoints->getDisambiguatorFromQuery($query),
+			'oai_url' => $query['oai'],
+			'stats_id' => $query['id'],
+			'first_beacon' => $time,
+			'last_beacon' => $time,
+		]);
 		$stats['newAdditions']++;
 	} else {
 		// Prepare to store the latest beacon ping date.
@@ -121,7 +130,7 @@ if (!$options['quiet']) echo "                                                  
 
 // Store the newest ping dates.
 foreach ($newestDates as $endpointId => $date) {
-	$endpoints->updateFields($endpointId, ['last_beacon' => $db->formatTime($date)]);
+	$endpoints->update($endpointId, ['last_beacon' => $db->formatTime($date)]);
 }
 
 
