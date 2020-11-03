@@ -45,7 +45,7 @@ while ($option = array_shift($argv)) switch ($option) {
 		break;
 	case '--minTimeBetween':
 		$options['minimumSecondsBetweenUpdates'] = (int) $c = array_shift($argv);
-		if (!ctype_digit($c) || !$c) array_unshift($argv, '-h');
+		if (!ctype_digit($c) || $c<0) array_unshift($argv, '-h');
 		break;
 	case '--year':
 		$options['year'] = (int) $c = array_shift($argv);
