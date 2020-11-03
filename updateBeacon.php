@@ -216,13 +216,18 @@ foreach ($contexts->getAll(true) as $context) {
 		} catch (Exception $e) {
 			throw new Exception($e->getMessage());
 		}
+	})->catch(function($e) use ($options) {
+		// Watch for errors, particularly child process out-of-memory problems.
+		if (!$options['quiet']) echo "\r(Caught child process exception: " . $e->getMessage() . ")\n";
 	});
 }
 if (!$options['quiet']) echo 'Finished queueing. Statistics: ' . print_r($statistics, true) . "Running queue...\n";
 
-while ($pool->getInProgress()) $pool->wait(function($pool) use ($options) {
-	if (!$options['quiet']) echo str_replace("\n", "", $pool->status()) . " \r";
-});
+while ($pool->getInProgress()) {
+	$pool->wait(function($pool) use ($options) {
+		if (!$options['quiet']) echo str_replace("\n", "", $pool->status()) . " \r";
+	});
+}
 
 if (!$options['quiet']) {
 	echo "\nFinished!\n";
