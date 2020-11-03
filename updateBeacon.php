@@ -122,10 +122,13 @@ foreach ($contexts->getAll(true) as $context) {
 			$db = new BeaconDatabase();
 			$contexts = new Contexts($db);
 
-			$oaiEndpoint = new \Phpoaipmh\Endpoint(new Phpoaipmh\Client($context['oai_url'], new \Phpoaipmh\HttpAdapter\GuzzleAdapter(new \GuzzleHttp\Client([
-				'headers' => ['User-Agent' => 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:79.0) Gecko/20100101 Firefox/79.0'],
-				'timeout' => $options['requestTimeout'],
-			]))));
+			$oaiEndpoint = new \Phpoaipmh\Endpoint(
+				new \Phpoaipmh\Client($context['oai_url'], new \Phpoaipmh\HttpAdapter\GuzzleAdapter(new \GuzzleHttp\Client([
+					'headers' => ['User-Agent' => 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:79.0) Gecko/20100101 Firefox/79.0'],
+					'timeout' => $options['requestTimeout'],
+				]))),
+				\Phpoaipmh\Granularity::DATE
+			);
 			$oaiFailure = false;
 
 			// Use an OAI ListRecords request to get the ISSN.
@@ -218,7 +221,7 @@ foreach ($contexts->getAll(true) as $context) {
 		}
 	})->catch(function($e) use ($options) {
 		// Watch for errors, particularly child process out-of-memory problems.
-		if (!$options['quiet']) echo "\r(Caught child process exception: " . $e->getMessage() . ")\n";
+		if (!$options['quiet']) echo "\r\n(Caught child process exception: " . $e->getMessage() . ")\n";
 	});
 }
 if (!$options['quiet']) echo 'Finished queueing. Statistics: ' . print_r($statistics, true) . "Running queue...\n";
