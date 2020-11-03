@@ -6,14 +6,6 @@ require_once('classes/Contexts.inc.php');
 require_once('classes/Beacon.inc.php');
 require_once('classes/CountSpans.inc.php');
 
-/**
- * Establish some defaults for count spans.
- * Each June 1st, we move to the last complete year.
- */
-$currentYear = date('Y');
-$currentMonth = date('n');
-$lastCompleteYear = $currentMonth >= 6 ? $currentYear - 1 : $currentYear - 2;
-
 $options = [
 	'scriptName' => array_shift($argv),
 	'quiet' => false,
@@ -24,7 +16,7 @@ $options = [
 	'minimumSecondsBetweenUpdates' => Beacon::DEFAULT_MINIMUM_SECONDS_BETWEEN_UPDATES,
 	'memoryLimit' => Beacon::DEFAULT_MEMORY_LIMIT,
 	'oaiUrl' => null,
-	'year' => $lastCompleteYear,
+	'year' => CountSpans::getDefaultLabel(),
 ];
 while ($option = array_shift($argv)) switch ($option) {
 	case '-q':
@@ -67,16 +59,16 @@ while ($option = array_shift($argv)) switch ($option) {
 	case '--help':
 	default:
 		echo "Usage: " . $options['scriptName'] . "
-		-h, -usage: Display usage information
-		-q, --quiet: Execute quietly (without status display)\n
-		--oai http://...: Select the beacon entry with the specified OAI URL to update
-		--memory_limit <n>: Set memory limit for parent process to <n> (default " . Beacon::DEFAULT_MEMORY_LIMIT . ")
-		--process_memory_limit <n>: Set memory limit per task to <n> (default " . Beacon::DEFAULT_PROCESS_MEMORY_LIMIT . ")
-		--timeout <n>: Set timeout per task <n> seconds (default " . Beacon::DEFAULT_TASK_TIMEOUT . ")
-		--year <n>: Set year to fetch record span for (default " . $lastCompleteYear . ")
-		--requestTimeout <n>: Set timeout per HTTP request to <n> seconds (default " . Beacon::DEFAULT_REQUEST_TIMEOUT . ")
-		--minTimeBetween <n>: Set the minimum time in seconds between updates (default 1 week)
-		--concurrency <n>: Set maximum concurrency to <n> simultaneous processes (default " . Beacon::DEFAULT_CONCURRENCY . ")\n";
+	-h, -usage: Display usage information
+	-q, --quiet: Execute quietly (without status display)\n
+	--oai http://...: Select the beacon entry with the specified OAI URL to update
+	--memory_limit <n>: Set memory limit for parent process to <n> (default " . Beacon::DEFAULT_MEMORY_LIMIT . ")
+	--process_memory_limit <n>: Set memory limit per task to <n> (default " . Beacon::DEFAULT_PROCESS_MEMORY_LIMIT . ")
+	--timeout <n>: Set timeout per task <n> seconds (default " . Beacon::DEFAULT_TASK_TIMEOUT . ")
+	--year <n>: Set year to fetch record span for (default " . CountSpans::getDefaultLabel() . ")
+	--requestTimeout <n>: Set timeout per HTTP request to <n> seconds (default " . Beacon::DEFAULT_REQUEST_TIMEOUT . ")
+	--minTimeBetween <n>: Set the minimum time in seconds between updates (default 1 week)
+	--concurrency <n>: Set maximum concurrency to <n> simultaneous processes (default " . Beacon::DEFAULT_CONCURRENCY . ")\n";
 		exit(-1);
 }
 

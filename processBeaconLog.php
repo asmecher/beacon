@@ -28,9 +28,9 @@ while ($option = array_shift($argv)) switch ($option) {
 	case '--help':
 	default:
 		echo "Usage: " . $options['scriptName'] . "
-		-h, -usage: Display usage information
-		-f <filename>: Read log entries from the specified filename
-		-q, --quiet: Execute quietly (without status display)\n";
+	-h, -usage: Display usage information
+	-f <filename>: Read log entries from the specified filename
+	-q, --quiet: Execute quietly (without status display)\n";
 		exit(-1);
 }
 

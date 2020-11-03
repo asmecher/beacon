@@ -31,10 +31,10 @@ while ($option = array_shift($argv)) switch ($option) {
 	case '--help':
 	default:
 		echo "Usage: " . $options['scriptName'] . "
-		-q, --quiet: Be quiet
-		-c, --createschema: Create the database schema
-		-d, --drop: Drop the database schema
-		-f, --flush: Flush database conents\n";
+	-q, --quiet: Be quiet
+	-c, --createschema: Create the database schema
+	-d, --drop: Drop the database schema
+	-f, --flush: Flush database conents\n";
 		exit(-1);
 }
 

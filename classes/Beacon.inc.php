@@ -7,4 +7,5 @@ class Beacon {
 	const DEFAULT_MINIMUM_SECONDS_BETWEEN_UPDATES = 60 * 60 * 24 * 7; // Also hard-coded in usage texts
 	const DEFAULT_PROCESS_MEMORY_LIMIT = '8M';
 	const DEFAULT_MEMORY_LIMIT = '1024M';
+	const DEFAULT_MINIMUM_RECORDS = '0';
 }

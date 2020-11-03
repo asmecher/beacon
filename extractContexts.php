@@ -42,13 +42,13 @@ while ($option = array_shift($argv)) switch ($option) {
 	case '--help':
 	default:
 		echo "Usage: " . $options['scriptName'] . "
-		-h, -usage: Display usage information
-		-q, --quiet: Execute quietly (without status display)\n
-		--oai http://...: Select the endpoint(s) with the specified OAI URL to update
-		--timeout <n>: Set timeout per task <n> seconds (default " . Beacon::DEFAULT_TASK_TIMEOUT . ")
-		--requestTimeout <n>: Set timeout per HTTP request to <n> seconds (default " . Beacon::DEFAULT_REQUEST_TIMEOUT . ")
-		--minTimeBetween <n>: Set the minimum time in seconds between updates (default 1 week)
-		--concurrency <n>: Set maximum concurrency to <n> simultaneous processes (default " . Beacon::DEFAULT_CONCURRENCY . ")\n";
+	-h, -usage: Display usage information
+	-q, --quiet: Execute quietly (without status display)\n
+	--oai http://...: Select the endpoint(s) with the specified OAI URL to update
+	--timeout <n>: Set timeout per task <n> seconds (default " . Beacon::DEFAULT_TASK_TIMEOUT . ")
+	--requestTimeout <n>: Set timeout per HTTP request to <n> seconds (default " . Beacon::DEFAULT_REQUEST_TIMEOUT . ")
+	--minTimeBetween <n>: Set the minimum time in seconds between updates (default 1 week)
+	--concurrency <n>: Set maximum concurrency to <n> simultaneous processes (default " . Beacon::DEFAULT_CONCURRENCY . ")\n";
 		exit(-1);
 }
 
