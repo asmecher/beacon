@@ -34,9 +34,9 @@ $db = new BeaconDatabase();
 $capsule = $db->getCapsule();
 $query = $capsule->table('contexts')
 	->join('endpoints', 'contexts.endpoint_id', '=', 'endpoints.id')
-	->leftJoin('count_spans', function($join) {
+	->leftJoin('count_spans', function($join) use ($options) {
 		$join->on('count_spans.context_id', '=', 'contexts.id')
-			->where('count_spans.label', '=', CountSpans::getDefaultLabel());
+			->where('count_spans.label', '=', $options['year']);
 	})
 	->select(
 		Capsule::raw('GROUP_CONCAT(DISTINCT endpoints.oai_url SEPARATOR \'\n\') AS oai_url'),
