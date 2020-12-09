@@ -99,9 +99,9 @@ class BeaconDatabase {
 	 */
 	public function flush() {
 		$capsule = $this->getCapsule();
-		$capsule()->table('count_spans')->delete();
-		$capsule()->table('contexts')->delete();
-		$capsule()->table('endpoints')->delete();
+		$capsule->table('count_spans')->delete();
+		$capsule->table('contexts')->delete();
+		$capsule->table('endpoints')->delete();
 	}
 
 	/**
