@@ -47,6 +47,7 @@ $query = $capsule->table('contexts')
 		'endpoints.repository_name',
 		'contexts.set_spec',
 		Capsule::raw('COALESCE(MAX(count_spans.record_count), 0) AS record_count_' . $options['year']),
+		Capsule::raw('MAX(contexts.total_record_count) AS total_record_count'),
 		Capsule::raw('MAX(contexts.issn) AS issn'),
 		Capsule::raw('MAX(contexts.country) AS country'),
 		Capsule::raw('MAX(endpoints.last_completed_update) AS last_completed_update'),
