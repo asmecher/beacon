@@ -11,6 +11,7 @@ $options = [
 	'scriptName' => array_shift($argv),
 	'year' => CountSpans::getDefaultLabel(),
 	'minRecords' => Beacon::DEFAULT_MINIMUM_RECORDS,
+	'file' => 'php://stdout',
 ];
 
 while ($option = array_shift($argv)) switch ($option) {
@@ -22,12 +23,18 @@ while ($option = array_shift($argv)) switch ($option) {
 		$options['minRecords'] = (int) $c = array_shift($argv);
 		if (!ctype_digit($c) || $c<0) array_unshift($argv, '-h');
 		break;
+	case '--file':
+	case '-f':
+		$options['file'] = array_shift($argv);
+		if (empty($options['file'])) array_unshift($argv, '-h');
+		break;
 	case '-h':
 	case '--help':
 	default:
 		echo "Usage: " . $options['scriptName'] . "
 	--min_records <n>: Set the minimum number of records to include for the specified year (default " . Beacon::DEFAULT_MINIMUM_RECORDS . ")
-	--year <n>: Set year to fetch record span for (default " . CountSpans::getDefaultLabel() . ")\n";
+	--year <n>: Set year to fetch record span for (default " . CountSpans::getDefaultLabel() . ")
+	--file <filename>: Set the output filename (default stdout)\n";
 		exit(-1);
 }
 $db = new BeaconDatabase();
@@ -55,21 +62,21 @@ $query = $capsule->table('contexts')
 		Capsule::raw('MAX(last_beacon) AS first_beacon'),
 		Capsule::raw('MAX(last_oai_response) AS last_oai_response')
 	)
-	->where('record_count', '>=', $options['minRecords'])
+	->where(Capsule::raw('COALESCE(count_spans.record_count, 0)'), '>=', $options['minRecords'])
 	->groupBy('endpoints.application', 'endpoints.version', 'endpoints.admin_email', 'endpoints.earliest_datestamp', 'endpoints.repository_name', 'contexts.set_spec');
 
-
 $records = $query->get();
-$fp = fopen('php://stdout', 'w');
+$fp = fopen($options['file'], 'w');
+if (!$fp) throw new Exception('Unable to open output file "' . $options['file'] . '"!');
 
 // Export column headers
 $context = $records->shift();
 if (!$context) throw new Exception('No beacon data is currently recorded!');
-fputcsv($fp, array_keys((array) $context));
+if (!fputcsv($fp, array_keys((array) $context))) throw new Exception('Unable to write output!');
 
 // Export the table contents
 do {
-	fputcsv($fp, (array) $context);
+	if (!fputcsv($fp, (array) $context)) throw new Exception('Unable to write output!');
 } while ($context = $records->shift());
 
 fclose($fp);
