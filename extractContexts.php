@@ -18,6 +18,10 @@ while ($option = array_shift($argv)) switch ($option) {
 	case '--quiet':
 		$options['quiet'] = true;
 		break;
+	case '--memory_limit':
+		$options['memoryLimit'] = $m = array_shift($argv);
+		if (empty($m) || !preg_match('/^[0-9]\+M$/', $m)) array_unshift($argv, '-h');
+		break;
 	case '--oai':
 		$options['oaiUrl'] = array_shift($argv);
 		if (empty($options['oaiUrl'])) array_unshift($argv, '-h');
@@ -44,6 +48,7 @@ while ($option = array_shift($argv)) switch ($option) {
 		echo "Usage: " . $options['scriptName'] . "
 	-h, -usage: Display usage information
 	-q, --quiet: Execute quietly (without status display)\n
+	--memory_limit <n>: Set memory limit for parent process to <n> (default " . Beacon::DEFAULT_MEMORY_LIMIT . ")
 	--oai http://...: Select the endpoint(s) with the specified OAI URL to update
 	--timeout <n>: Set timeout per task <n> seconds (default " . Beacon::DEFAULT_TASK_TIMEOUT . ")
 	--requestTimeout <n>: Set timeout per HTTP request to <n> seconds (default " . Beacon::DEFAULT_REQUEST_TIMEOUT . ")
@@ -51,6 +56,8 @@ while ($option = array_shift($argv)) switch ($option) {
 	--concurrency <n>: Set maximum concurrency to <n> simultaneous processes (default " . Beacon::DEFAULT_CONCURRENCY . ")\n";
 		exit(-1);
 }
+
+ini_set('memory_limit', $options['memoryLimit']);
 
 if (!$options['quiet']) echo "Queuing processes...\r";
 

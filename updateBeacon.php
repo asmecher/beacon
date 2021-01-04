@@ -72,7 +72,7 @@ while ($option = array_shift($argv)) switch ($option) {
 		exit(-1);
 }
 
-ini_set('memory_limit', Beacon::DEFAULT_MEMORY_LIMIT);
+ini_set('memory_limit', $options['memoryLimit']);
 
 if (!$options['quiet']) echo "Queuing processes...\r";
 
