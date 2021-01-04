@@ -34,7 +34,7 @@ while ($option = array_shift($argv)) switch ($option) {
 	-q, --quiet: Be quiet
 	-c, --createschema: Create the database schema
 	-d, --drop: Drop the database schema
-	-f, --flush: Flush database conents\n";
+	-f, --flush: Flush database contents\n";
 		exit(-1);
 }
 
