@@ -11,6 +11,7 @@ $options = [
 	'timeout' => Beacon::DEFAULT_TASK_TIMEOUT,
 	'requestTimeout' => Beacon::DEFAULT_REQUEST_TIMEOUT,
 	'minimumSecondsBetweenUpdates' => Beacon::DEFAULT_MINIMUM_SECONDS_BETWEEN_UPDATES,
+	'memoryLimit' => Beacon::DEFAULT_MEMORY_LIMIT,
 	'oaiUrl' => null,
 ];
 while ($option = array_shift($argv)) switch ($option) {
