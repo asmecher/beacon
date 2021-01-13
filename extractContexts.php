@@ -132,6 +132,9 @@ foreach ($endpoints->getAll() as $endpoint) {
 				$sets = $oaiEndpoint->listSets();
 				$contexts = new Contexts($db);
 				foreach ($sets as $set) {
+					// Skip "driver" sets (DRIVER plugin for OJS)
+					if ($set->setSpec == 'driver') continue;
+
 					// Skip anything that looks like a journal section
 					if (strstr($set->setSpec, ':') !== false) continue;
 
