@@ -5,8 +5,8 @@ The tools in this repository provide data harvesting using the PKP Beacon, a lig
 To install the tool:
 - Clone the repository locally
 - Install composer dependencies: `composer install`
-- Create an empty database called "beacon" (username=beacon, password=beacon). (This can be overridden using environment variables.)
-- Create the database schema by running `php manage.php -c
+- Create an empty database called "beacon" (username=beacon, password=beacon). (This can be overridden using environment variables, see .)
+- Create the database schema by running `php beacon.php database create`
 
 ## Usage
 
@@ -20,26 +20,26 @@ Each stage is executed by running a different script.
 
 ### Parsing the access logs
 
-To look through the access logs for beacons that might identify new installations (or provide updates from already-seen ones), use the tool `processBeaconLog.php`. For usage information, run:
+To look through the access logs for beacons that might identify new installations (or provide updates from already-seen ones), use the `process-log` command. For usage information, run:
 
 ```
-php processBeaconLog.php -h
+php beacon.php process-log -h
 ```
 
 This is a single-threaded tool that can handle a large number of log entries relatively quickly.
 
 Additional processing done at this stage:
-- OAI URLs are filtered for common development/testing characteristics like `localhost`. These are skipped. (Details: https://github.com/asmecher/beacon/blob/main/processBeaconLog.php#L83)
+- OAI URLs are filtered for common development/testing characteristics like `localhost`. These are skipped. (Details: https://github.com/asmecher/beacon/blob/main/src/Entities/Endpoints.php#L12)
 - Some basic deduplication is done. If the OAI URL (excluding its `http`/`https` protocol and `www.` prefix) and stats ID are already in the database, a new entry is not created. (Details: https://github.com/asmecher/beacon/blob/main/classes/Endpoints.inc.php#L18)
 
 ### Extracting the context list
 
 In this stage, a list of contexts (e.g. journals) is extracted from each OAI endpoint.
 
-To extract the context list, use the tool `extractContexts.php`. For usage information, run:
+To extract the context list, use the `scan` command. For usage information, run:
 
 ```
-php extractContexts.php -h
+php beacon.php scan -h
 ```
 
 This is a multi-threaded tool that allows potentially several minutes for each beacon entry. Timeouts, concurrency, etc. are all configurable. Records can be selected for update by OAI URL. See the usage information for details.
@@ -51,10 +51,10 @@ Additional processing done at this stage:
 
 In this stage, the data stored in the beacon for each context (e.g. journal or preprint server) is enriched.
 
-To update the beacon data for each context, use the tool `updateBeacon.php`. For usage information, run:
+To update the beacon data for each context, use the `synchronize` command. For usage information, run:
 
 ```
-php updateBeacon.php -h
+php beacon.php synchronize -h
 ```
 
 This is a multi-threaded tool that allows potentially several minutes for each beacon entry. Timeouts, concurrency, etc. are all configurable. Records can be selected for update by OAI URL. See the usage information for details.
@@ -66,10 +66,10 @@ Additional processing done at this stage:
 
 ### Extracting the data
 
-Data can be exported using the `export.php` tool:
+Data can be exported as CSV using the `export` command:
 
 ```
-php export.php > beacon.csv
+php beacon.php export > beacon.csv
 ```
 
 Additional processing done at this stage:
