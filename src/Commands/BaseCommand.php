@@ -8,6 +8,7 @@ use GetOpt\GetOpt;
 
 abstract class BaseCommand
 {
+    /** @var GetOpt The GetOpt instance */
     public $options;
 
     public function __construct(GetOpt $options)
@@ -16,14 +17,17 @@ abstract class BaseCommand
         $this->setup();
     }
 
+    /** Setups the command */
     abstract protected function setup(): void;
 
+    /** Executes the command */
     abstract public function __invoke(): void;
 
+    /** Logs a message to the stdout if the quiet option isn't set */
     public function log(string $message): void
     {
         if (!$this->options['quiet']) {
-            echo "${message}\n";
+            echo $message;
         }
     }
 }

@@ -16,10 +16,10 @@ $cli = new GetOpt([
 
 $commands = [
     Commands\DatabaseCommand::class,
-    Commands\ProcessLogCommand::class,
-    Commands\ScanContextsCommand::class,
-    Commands\SynchronizeContextsCommand::class,
-    Commands\ExportCommand::class
+    Commands\LogProcessorCommand::class,
+    Commands\ContextScannerCommand::class,
+    Commands\ContextSynchronizerCommand::class,
+    Commands\ExporterCommand::class
 ];
 foreach ($commands as $command) {
     new $command($cli);

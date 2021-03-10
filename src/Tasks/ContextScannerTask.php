@@ -11,10 +11,12 @@ use PKP\Beacon\Entities\Endpoints;
 
 class ContextScannerTask extends BaseTask
 {
+    /** @var object The endpoint */
     public $endpoint;
+    /** @var int The request timeout */
     public $requestTimeout = Constants::DEFAULT_REQUEST_TIMEOUT;
 
-    public function __construct(array $endpoint, ?int $requestTimeout = null)
+    public function __construct(object $endpoint, ?int $requestTimeout = null)
     {
         $this->endpoint = $endpoint;
         if ($requestTimeout) {
@@ -22,6 +24,7 @@ class ContextScannerTask extends BaseTask
         }
     }
 
+    /** Retrieves the OAI endpoint */
     private function getEndpoint(string $url): \Phpoaipmh\Endpoint
     {
         return new \Phpoaipmh\Endpoint(
@@ -37,13 +40,15 @@ class ContextScannerTask extends BaseTask
         );
     }
 
+    /** Runs the task */
     public function run(): bool
     {
         try {
             $db = new Database();
             $endpoints = new Endpoints($db);
+            $endpoint = $this->endpoint;
 
-            $oaiEndpoint = $this->getEndpoint($this->endpoint['oai_url']);
+            $oaiEndpoint = $this->getEndpoint($endpoint->oai_url);
 
             // Use an OAI Identify request to get the admin email and test OAI.
             try {
@@ -51,7 +56,7 @@ class ContextScannerTask extends BaseTask
                 if (!$result->Identify->baseURL) {
                     return false;
                 }
-                $endpoints->update($this->endpoint['id'], [
+                $endpoints->update($endpoint->id, [
                     'last_oai_response' => $db->formatTime(),
                     'admin_email' => $result->Identify->adminEmail,
                     'earliest_datestamp' => $db->formatTime(strtotime((string) $result->Identify->earliestDatestamp)),
@@ -59,9 +64,9 @@ class ContextScannerTask extends BaseTask
                     'admin_email' => $result->Identify->adminEmail,
                 ]);
             } catch (\Exception $e) {
-                $endpoints->update($this->endpoint['id'], [
+                $endpoints->update($endpoint->id, [
                     'last_error' => 'Identify: ' . mb_convert_encoding($e->getMessage(), 'UTF-8', 'UTF-8'), // Remove invalid UTF-8, e.g. in the case of a 404
-                    'errors' => ++$this->endpoint['errors'],
+                    'errors' => ++$endpoint->errors,
                 ]);
                 return false;
             }
@@ -82,23 +87,23 @@ class ContextScannerTask extends BaseTask
                     }
 
                     // If we appear to already have this context in the database, skip it.
-                    if ($contexts->find(['endpoint_id' => $this->endpoint['id'], 'set_spec' => $set->setSpec])) {
+                    if ($contexts->find(['endpoint_id' => $endpoint->id, 'set_spec' => $set->setSpec])) {
                         continue;
                     }
 
                     // Add a new context entry to the database.
-                    $contexts->insert(['endpoint_id' => $this->endpoint['id'], 'set_spec' => $set->setSpec]);
+                    $contexts->insert(['endpoint_id' => $endpoint->id, 'set_spec' => $set->setSpec]);
                 }
             } catch (\Exception $e) {
-                $endpoints->update($this->endpoint['id'], [
+                $endpoints->update($endpoint->id, [
                     'last_error' => 'ListSets: ' . $e->getMessage(),
-                    'errors' => ++$this->endpoint['errors'],
+                    'errors' => ++$endpoint->errors,
                 ]);
                 return false;
             }
 
             // Finished; save the updated entry.
-            $endpoints->update($this->endpoint['id'], [
+            $endpoints->update($endpoint->id, [
                 'last_completed_update' => $db->formatTime(),
                 'last_error' => null
             ]);

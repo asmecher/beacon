@@ -9,144 +9,139 @@ use PKP\Beacon\Entities\Endpoints;
 
 class LogProcessor
 {
-    public const PATH_TO_APPLICATION_MAP = [
-        '/ojs/xml/ojs-version.xml' => 'ojs',
-        '/omp/xml/omp-version.xml' => 'omp',
-        '/ops/xml/ops-version.xml' => 'ops',
-    ];
+    public const DEFAULT_LOG_FORMAT = '%h %l %u %t "%m %U %H" %>s %b "%{Referer}i" \"%{User-Agent}i"';
 
-    public const FILTERED_OAI_URLS = [
-        '/localhost/',
-        '/[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/', // IP addresses
-        '/test/',
-        '/demo[^s]/', // Avoid skipping Greek sociology
-        '/theme/',
-        '/\.softaculous\.com/', // Demos
-    ];
+    /** @var callable|null Logger function, receives a string */
+    public $logger;
 
-    public const DEFAULT_LOG_FORMAT = '%h %l %u %t "%r" %>s %b "%{Referer}i" \"%{User-Agent}i"';
-
-    private $db;
-    private $endpoints;
-    private $parser;
-    private $logger;
-
-    public function __construct(string $logFormat = self::DEFAULT_LOG_FORMAT, ?callable $logger = null)
+    /**
+     * Starts the processing of the given log file
+     *
+     * @param string $logFormat The formatting rules (https://github.com/kassner/log-parser#supported-format-strings) of the log file
+     */
+    public function process(\SplFileObject $file, string $logFormat = self::DEFAULT_LOG_FORMAT): void
     {
-        $this->db = new Database();
-        $this->endpoints = new Endpoints($this->db);
-        $this->parser = new LogParser($logFormat);
-        $this->logger = $logger;
-    }
+        $fileSize = 0;
+        try {
+            $fileSize = $file->getSize();
+        } catch (\Exception $e) {
+            // Probably an stream
+        }
 
-    public function process(\SplFileObject $file): array
-    {
-        $endpoints = $this->endpoints;
-        $db = $this->db;
+        $db = new Database();
+        $endpoints = new Endpoints($db);
+        $parser = new LogParser($logFormat);
 
-        $stats = [
-            'ojsLogCount' => 0, 'ompLogCount' => 0, 'opsLogCount' => 0,
-            'beaconDisabledLogCount' => 0, 'excludedCount' => 0,
-            'totalBeaconCount' => 0, 'totalLogCount' => 0,
-            'newAdditions' => 0, 'returningBeacons' => 0,
+        $statistics = (object) [
+            'ojsLogCount' => 0,
+            'ompLogCount' => 0,
+            'opsLogCount' => 0,
+            'beaconDisabledLogCount' => 0,
+            'excludedCount' => 0,
+            'totalBeaconCount' => 0,
+            'totalLogCount' => 0,
+            'newAdditions' => 0,
+            'returningBeacons' => 0,
         ];
 
         // This is used to cache mappings from disambiguators to IDs.
         $disambiguatorIdCache = [];
         // This is used to store latest-encountered dates, batching updates at the end for performance.
         $newestDates = [];
+        $unique = $endpoints->getCount();
+        $this->log('Parsing log...');
+        while (!$file->eof()) {
+            $line = $file->fgets();
+            $statistics->totalLogCount++;
 
-        while ($line = $file->fgets()) {
-            $stats['totalLogCount']++;
-
-            // Optimization: If this substring isn't present, skip the entry immediately.
-            if (!strstr($line, 'version.xml')) {
+            try {
+                $logEntry = $parser->parse($line);
+            } catch (\Exception $e) {
+                $this->log("\nFailed to parse log line #" . $statistics->totalLogCount);
                 continue;
             }
 
-            $entry = $this->parser->parse($line);
-
-            $matches = null;
-            // Not a beacon
-            if (!preg_match('/^GET (.*) HTTP\/1\.[01]$/', $entry->request, $matches)) {
-                continue;
-            }
-
-            // Not a beacon
-            if (!($url = parse_url($matches[1])) || !isset($url['path'])) {
-                continue;
-            }
-
-            $application = self::PATH_TO_APPLICATION_MAP[$url['path']] ?? null;
+            $url = (object) parse_url($logEntry->URL);
             // It's not a beacon log entry; continue to next line
-            if (!$application) {
+            if (!$application = $endpoints->getApplicationFromPath($url->path ?? '')) {
                 continue;
             }
-            $stats[$application . 'LogCount']++;
-            $stats['totalBeaconCount']++;
-            if ($stats['totalBeaconCount'] % 100 == 0) {
-                $this->log($stats['totalBeaconCount'] . ' beacons (' . $endpoints->getCount() . ' unique) on ' . $stats['totalLogCount'] . ' lines...');
+
+            $application = strtolower($application);
+            $statistics->{$application . 'LogCount'}++;
+            if (!($statistics->totalBeaconCount++ % 100) || $file->eof()) {
+                $this->log('Status: ' . ($fileSize ? round($file->ftell() / $fileSize * 100) . '% - ' : '') . $statistics->totalBeaconCount . ' beacons (' . $unique . ' unique) on ' . $statistics->totalLogCount . ' lines.', true);
             }
 
-            parse_str($url['query'] ?? '', $query);
+            parse_str($url->query ?? '', $query);
+            $query = (object) $query;
             if (!$disambiguator = $endpoints->getDisambiguatorFromQuery($query)) {
                 // A unique ID could not be determined; count for stats and skip further processing.
-                $stats['beaconDisabledLogCount']++;
+                $statistics->beaconDisabledLogCount++;
                 continue;
             }
 
             // Avoid excluded OAI URL forms
-            foreach (self::FILTERED_OAI_URLS as $exclusion) {
-                if (preg_match($exclusion, $query['oai'])) {
-                    $stats['excludedCount']++;
-                    continue 2;
-                }
+            if (!$endpoints->isValidOaiUrl($query->oai)) {
+                $statistics->excludedCount++;
+                continue;
             }
 
             // Look for an existing endpoint ID by disambiguator (cached if possible).
-            $endpointId = null;
-            if (isset($disambiguatorIdCache[$disambiguator])) {
-                $endpointId = $disambiguatorIdCache[$disambiguator];
-            } elseif ($endpoint = $endpoints->find(['disambiguator' => $disambiguator])) {
-                $endpointId = $endpoint['id'];
-                $newestDates[$endpointId] = strtotime($endpoint['last_beacon']);
-                $disambiguatorIdCache[$disambiguator] = $endpointId;
+            if (!$endpointId = $disambiguatorIdCache[$disambiguator] ?? null) {
+                if ($endpoint = $endpoints->find(['disambiguator' => $disambiguator])) {
+                    $endpointId = $endpoint->id;
+                    $newestDates[$endpointId] = strtotime($endpoint->last_beacon);
+                    $disambiguatorIdCache[$disambiguator] = $endpointId;
+                }
             }
 
+            // If the endpoint wasn't found, insert it
             if (!$endpointId) {
-                // Create a new beacon entry.
-                $time = $db->formatTime(strtotime($entry->time));
+                $time = $db->formatTime(strtotime($logEntry->time));
                 $endpoints->insert([
                     'application' => $application,
-                    'version' => $entry->HeaderUserAgent,
-                    'disambiguator' => $endpoints->getDisambiguatorFromQuery($query),
-                    'oai_url' => $query['oai'],
-                    'stats_id' => $query['id'],
+                    'version' => $logEntry->HeaderUserAgent,
+                    'disambiguator' => $disambiguator,
+                    'oai_url' => $query->oai,
+                    'stats_id' => $query->id,
                     'first_beacon' => $time,
                     'last_beacon' => $time,
                 ]);
-                $stats['newAdditions']++;
+                ++$unique;
+                $statistics->newAdditions++;
             } else {
-                // Prepare to store the latest beacon ping date.
-                $newestDates[$endpointId] = max(strtotime($entry->time), $newestDates[$endpointId]);
-                $stats['returningBeacons']++;
+                // Prepare to store the latest beacon ping date
+                $newestDates[$endpointId] = max(strtotime($logEntry->time), $newestDates[$endpointId]);
+                $statistics->returningBeacons++;
             }
         }
 
-        $this->log('Storing dates...');
+        $this->log("\nStoring dates...");
 
         // Store the newest ping dates.
+        $i = 0;
+        $total = count($newestDates);
         foreach ($newestDates as $endpointId => $date) {
+            $this->log('Storing ' . ++$i . '/' . $total, true);
             $endpoints->update($endpointId, ['last_beacon' => $db->formatTime($date)]);
         }
 
-        return $stats;
+        $this->log("\nStatistics:");
+        foreach ($statistics as $key => $value) {
+            $this->log("{$key}: {$value}");
+        }
     }
 
-    private function log(string $message): void
+    /**
+     * Logs the given text
+     *
+     * @param bool|null $replace If replace is true, a carriage-return will be added to the end, otherwise a new line
+     */
+    private function log(string $message, ?bool $replace = false): void
     {
         if ($this->logger) {
-            ($this->logger)($message);
+            ($this->logger)($message . ($replace ? "\r" : "\n"));
         }
     }
 }

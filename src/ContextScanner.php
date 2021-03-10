@@ -7,78 +7,99 @@ namespace PKP\Beacon;
 use PKP\Beacon\Entities\Endpoints;
 use PKP\Beacon\Tasks\ContextScannerTask;
 use PKP\Beacon\Tasks\TaskManager;
-use Spatie\Async\Pool;
 
 class ContextScanner extends TaskManager
 {
-    private $logger;
-
+    /** @var callable|null Logger function, receives a string */
+    public $logger;
+    /** @var int Interval of seconds to consider an endpoint as updated */
     public $minimumSecondsBetweenUpdates = Constants::DEFAULT_MINIMUM_SECONDS_BETWEEN_UPDATES;
+    /** @var int|null Maximum amount of time to wait for a response */
     public $requestTimeout;
-    public $oai;
+    /** @var string|null Filters out endpoints that are not part of the given OAI URL */
+    public $oaiUrl;
+    /** @var \Generator Source of endpoints */
+    private $generator;
 
-    public function __construct(?callable $logger = null)
+    /**
+     * Lazily creates and retrieves a generator
+     */
+    private function getGenerator(): \Generator
     {
-        $this->logger = $logger;
+        if (!$this->generator) {
+            $db = new Database();
+            $endpoints = new Endpoints($db);
+            $this->generator = $this->oaiUrl
+                ? array_filter([$endpoints->find(['oai_url' => $this->oaiUrl])], 'is_object')
+                : $endpoints->getOutdatedBy($this->minimumSecondsBetweenUpdates, $this->concurrency * 2);
+        }
+        return $this->generator;
     }
 
-    public function process(): void
+    /**
+     * Retrieves whether there's more data to be consumed
+     */
+    private function hasData(): bool
     {
-        $db = new Database();
-        $endpoints = new Endpoints($db);
+        return $this->getGenerator()->valid();
+    }
 
-        $statistics = ['selected' => 0, 'skipped' => 0, 'total' => 0];
+    /**
+     * Retrieves an item from the generator and advances it
+     */
+    private function getNext(): ?object
+    {
+        $generator = $this->getGenerator();
+        $current = $generator->current();
+        $generator->next();
+        return $current;
+    }
 
-        $this->log('Queuing processes...');
-        foreach ($endpoints->getAll() as $endpoint) {
-            $endpoint = (array) $endpoint;
-
-            // Select only the desired endpoint for task queueing.
-            $statistics['total']++;
-            if (!empty($this->oai)) {
-                // If a specific OAI URL was specified, update that record.
-                if ($endpoint['oai_url'] != $this->oai) {
-                    $statistics['skipped']++;
-                    continue;
-                } else {
-                    $statistics['selected']++;
-                }
-            } else {
-                // Default: skip anything that was updated successfully in the last "DEFAULT_MINIMUM_SECONDS_BETWEEN_UPDATES".
-                if ($endpoint['last_completed_update'] && time() - strtotime($endpoint['last_completed_update']) < $this->minimumSecondsBetweenUpdates) {
-                    $statistics['skipped']++;
-                    continue;
-                }
-            }
+    /**
+     * Fills the task scheduler with data until it's full and outputs updates
+     */
+    private function fillQueue(): void
+    {
+        $this->log($this->getStatus(), true);
+        while ($this->hasQueueSlot() && $this->hasData()) {
             $this
-                ->addTask(new ContextScannerTask($endpoint, $this->requestTimeout))
+                ->addTask(new ContextScannerTask($this->getNext(), $this->requestTimeout))
                 ->catch(function (\Exception $e) {
                     // Watch for errors, particularly child process out-of-memory problems.
-                    $this->log('Caught child process exception: ' . $e->getMessage());
+                    $this->log('Caught task exception: ' . $e->getMessage());
                 });
-        }
-
-        $this->log('Finished queueing. Statistics: ' . print_r($statistics, true) . 'Running queue...');
-
-        $this->run(function (Pool $pool) {
-            $this->log(str_replace("\n", '', $pool->status()));
-        });
-
-        $this->log('Finished');
-        if ($this->oai) {
-            foreach ($endpoints->getAll() as $endpoint) {
-                $endpoint = (array) $endpoint;
-                if ($endpoint['oai_url'] == $this->oai) {
-                    $this->log(print_r($endpoint, 1));
-                }
-            }
+            $this->log($this->getStatus(), true);
         }
     }
 
-    private function log(string $message): void
+    /**
+     * Starts the processing
+     */
+    public function process(): void
+    {
+        $this->log('Queuing and running tasks...');
+        // Just in case the task finish before the "tick" happens
+        while ($this->hasData()) {
+            // Fill in initial queue
+            $this->fillQueue();
+            // And keep filling in when the task scheduler ticks
+            $this->getPool()->wait(function () {
+                $this->fillQueue();
+            });
+        }
+        $this->log($this->getStatus());
+        $this->log('Context scanning completed!');
+    }
+
+    /**
+     * Logs the given text
+     *
+     * @param bool|null $replace If replace is true, a carriage-return will be added to the end, otherwise a new line
+     */
+    private function log(string $message, ?bool $replace = false): void
     {
         if ($this->logger) {
-            ($this->logger)($message);
+            ($this->logger)($message . ($replace ? "\r" : "\n"));
         }
     }
 }

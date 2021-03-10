@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace PKP\Beacon\Entities;
 
+use Illuminate\Database\Query\Builder;
+use PKP\Beacon\Constants;
 use PKP\Beacon\Database;
 
 abstract class Entity
@@ -21,15 +23,15 @@ abstract class Entity
      *
      * @param array $characteristics [column_name => value, ...]
      *
-     * @return array|null Context characteristics, or null if not found.
+     * @return object|null Context characteristics, or null if not found.
      */
-    public function find(array $characteristics): ?array
+    public function find(array $characteristics): ?object
     {
         $query = $this->db->getCapsule()->table($this->getTableName());
         foreach ($characteristics as $name => $value) {
             $query->where($name, '=', $value);
         }
-        return (array) $query->get()->first();
+        return $query->get()->first();
     }
 
     /**
@@ -60,4 +62,20 @@ abstract class Entity
      * Get the name of the database table for this entity.
      */
     abstract protected function getTableName(): string;
+
+
+    /**
+     * Given a Laravel query builder and the amount of rows, it creates a Laravel paginator and lazily retrieve all the rows using a generator.
+     * As the resultset is paged, be sure to use a good sorting method, to avoid visiting the same record in a next page.
+     */
+    public static function paginateLazily(Builder $query, int $rows = Constants::DEFAULT_PAGE_SIZE): \Generator
+    {
+        $page = 0;
+        do {
+            $results = $query->simplePaginate($rows, ['*'], '', ++$page);
+            foreach ($results as $row) {
+                yield $row;
+            }
+        } while ($results->hasMorePages());
+    }
 }

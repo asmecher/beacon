@@ -10,8 +10,9 @@ use GetOpt\Option;
 use PKP\Beacon\Constants;
 use PKP\Beacon\ContextScanner;
 
-class ScanContextsCommand extends BaseCommand
+class ContextScannerCommand extends BaseCommand
 {
+    /** Setups the command */
     protected function setup(): void
     {
         $command = $this
@@ -20,58 +21,61 @@ class ScanContextsCommand extends BaseCommand
         $this->options->addCommand($command);
     }
 
+    /** Adds the options */
     private function addOptions(Command $command): Command
     {
         return $command->addOptions([
-            Option::create(null, 'concurrency')
+            Option::create('c', 'concurrency', GetOpt::OPTIONAL_ARGUMENT)
                 ->setDescription('Set maximum concurrency to <n> simultaneous processes (default ' . Constants::DEFAULT_CONCURRENCY . ')')
                 ->setDefaultValue(Constants::DEFAULT_CONCURRENCY)
                 ->setValidation(function ($value) {
                     return ctype_digit($value) && $value;
                 }, 'Invalid value'),
-            Option::create(null, 'timeout')
+            Option::create('t', 'timeout', GetOpt::OPTIONAL_ARGUMENT)
                 ->setDescription('Set timeout per task <n> seconds (default ' . Constants::DEFAULT_TASK_TIMEOUT . ')')
                 ->setDefaultValue(Constants::DEFAULT_TASK_TIMEOUT)
                 ->setValidation(function ($value) {
                     return ctype_digit($value) && $value;
                 }, 'Invalid value'),
-            Option::create(null, 'requestTimeout')
+            Option::create('r', 'requestTimeout', GetOpt::OPTIONAL_ARGUMENT)
                 ->setDescription('Set timeout per HTTP request to <n> seconds (default ' . Constants::DEFAULT_REQUEST_TIMEOUT . ')')
                 ->setDefaultValue(Constants::DEFAULT_REQUEST_TIMEOUT)
                 ->setValidation(function ($value) {
                 }, 'Invalid value'),
-            Option::create(null, 'minimumSecondsBetweenUpdates')
+            Option::create('m', 'minimumSecondsBetweenUpdates', GetOpt::OPTIONAL_ARGUMENT)
                 ->setDescription('Set the minimum time in seconds between updates (default ' . Constants::DEFAULT_MINIMUM_SECONDS_BETWEEN_UPDATES . ' seconds)')
                 ->setDefaultValue(Constants::DEFAULT_MINIMUM_SECONDS_BETWEEN_UPDATES)
                 ->setValidation(function ($value) {
                     return ctype_digit($value) && $value;
                 }, 'Invalid value'),
-            Option::create(null, 'memoryLimit')
+            Option::create('L', 'memoryLimit', GetOpt::OPTIONAL_ARGUMENT)
                 ->setDescription('Set memory limit for parent process to the given value (default ' . Constants::DEFAULT_MEMORY_LIMIT . ')')
                 ->setDefaultValue(Constants::DEFAULT_MEMORY_LIMIT)
                 ->setValidation(function ($value) {
                     return !empty($value) && preg_match('/^[0-9]+M$/', $value);
                 }, 'Invalid value'),
-            Option::create(null, 'oai')
+            Option::create('l', 'taskMemoryLimit', GetOpt::OPTIONAL_ARGUMENT)
+                ->setDescription('Set memory limit per task to the given value (default ' . Constants::DEFAULT_TASK_MEMORY_LIMIT . ')')
+                ->setDefaultValue(Constants::DEFAULT_TASK_MEMORY_LIMIT)
+                ->setValidation(function ($value) {
+                    return !empty($value) && preg_match('/^[0-9]+M$/', $value);
+                }, 'Invalid value'),
+            Option::create('o', 'oaiUrl', GetOpt::OPTIONAL_ARGUMENT)
                 ->setDescription('Select the endpoint(s) with the specified OAI URL to update')
                 ->setValidation(function ($value) {
                     return !empty($value);
-                }, 'Invalid value'),
-            Option::create('f', 'file', GetOpt::REQUIRED_ARGUMENT)
-                ->setDescription('Read log entries from the specified filename (default: stdin)')
-                ->setDefaultValue('php://stdin')
-                ->setValidation(function ($value) {
-                    return (new \SplFileInfo($value))->isReadable();
-                }, 'The input file must exist and be readable.')
+                }, 'Invalid value')
         ]);
     }
 
+    /** Executes the command */
     public function __invoke(): void
     {
-        $contextScanner = new ContextScanner(function ($message) {
+        $contextScanner = new ContextScanner();
+        $contextScanner->logger = function ($message) {
             $this->log($message);
-        });
-        foreach (['concurrency', 'timeout', 'requestTimeout', 'minimumSecondsBetweenUpdates', 'memoryLimit', 'oaiUrl'] as $setting) {
+        };
+        foreach (['concurrency', 'timeout', 'requestTimeout', 'minimumSecondsBetweenUpdates', 'memoryLimit', 'taskMemoryLimit', 'oaiUrl'] as $setting) {
             $contextScanner->{$setting} = $this->options[$setting];
         }
         $contextScanner->process();

@@ -15,11 +15,38 @@ class Contexts extends Entity
     }
 
     /**
-     * Get the list of context entries.
+     * Get the list of context entries that haven't been updated in a given amount of time.
      *
-     * @param bool $randomOrder true iff the returned results should be randomly ordered; default false
+     * @param int $secondsInterval Amount of time to consider a record as updated
      */
-    public function getAll($randomOrder = false): iterable
+    public function getOutdatedBy(int $secondsInterval, ?int $rows): \Generator
+    {
+        $secondsInterval = (int) $secondsInterval;
+        $query = $this->db->getCapsule()
+            ->table('contexts')
+            ->join('endpoints', 'contexts.endpoint_id', '=', 'endpoints.id')
+            ->select(
+                'contexts.*',
+                'endpoints.oai_url',
+                'endpoints.application',
+                'endpoints.version',
+                'endpoints.admin_email',
+                'endpoints.earliest_datestamp',
+                'endpoints.repository_name',
+                'endpoints.stats_id',
+                'endpoints.first_beacon',
+                'endpoints.last_beacon'
+            )
+            ->where($this->db->raw('COALESCE(TIMESTAMPDIFF(SECOND, contexts.last_completed_update, CURRENT_TIMESTAMP), ' . $secondsInterval . ')'), '>=', $secondsInterval)
+            ->orderBy('endpoints.id')
+            ->orderBy('contexts.id');
+        return $this->paginateLazily($query, $rows);
+    }
+
+    /**
+     * Get the list of context entries that match the given OAI URL.
+     */
+    public function getByOaiUrl(string $oaiUrl, ?int $rows = null): \Generator
     {
         $query = $this->db->getCapsule()
             ->table('contexts')
@@ -35,11 +62,11 @@ class Contexts extends Entity
                 'endpoints.stats_id',
                 'endpoints.first_beacon',
                 'endpoints.last_beacon'
-            );
-        if ($randomOrder) {
-            $query->inRandomOrder();
-        }
-        return $query->get();
+            )
+            ->where('oai_url', '=', $oaiUrl)
+            ->orderBy('endpoints.id')
+            ->orderBy('contexts.id');
+        return $this->paginateLazily($query, $rows);
     }
 
     /**

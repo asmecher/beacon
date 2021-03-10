@@ -10,6 +10,7 @@ use PKP\Beacon\Database;
 
 class DatabaseCommand extends BaseCommand
 {
+    /** Setups the command */
     protected function setup(): void
     {
         $command = $this
@@ -18,6 +19,7 @@ class DatabaseCommand extends BaseCommand
         $this->options->addCommand($command);
     }
 
+    /** Adds the options */
     private function addOptions(Command $command): Command
     {
         return $command->addOptions([
@@ -27,6 +29,7 @@ class DatabaseCommand extends BaseCommand
         ]);
     }
 
+    /** Executes the command */
     public function __invoke(): void
     {
         $options = [
@@ -52,6 +55,7 @@ class DatabaseCommand extends BaseCommand
         throw new \Exception('Specify an operation.');
     }
 
+    /** Retrieves a Database instance */
     private function getDatabase(): Database
     {
         return new Database();

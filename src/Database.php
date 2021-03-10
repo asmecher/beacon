@@ -17,7 +17,6 @@ class Database
     public function __construct()
     {
         $this->capsule = new Capsule();
-
         $this->capsule->addConnection([
             'driver' => 'mysql',
             'host' => getenv('BEACON_DBHOST') ?: 'localhost',
@@ -69,6 +68,7 @@ class Database
             $table->string('set_spec');
             $table->string('issn')->nullable();
             $table->string('country')->nullable();
+            $table->string('country_iso')->nullable();
             $table->integer('total_record_count')->nullable();
             $table->datetime('last_completed_update')->nullable();
             $table->integer('errors')->default(0);
@@ -125,8 +125,11 @@ class Database
         return strftime('%Y-%m-%d %T', $time ?? time());
     }
 
-    public static function escape(string $data)
+    /**
+     * Avoids escaping a database statement
+     */
+    public static function raw(string $statement)
     {
-        return Capsule::raw($data);
+        return Capsule::raw($statement);
     }
 }
