@@ -70,11 +70,66 @@ abstract class Entity
      */
     public static function paginateLazily(Builder $query, int $rows = Constants::DEFAULT_PAGE_SIZE): \Generator
     {
+        $baseQuery = clone $query;
         $page = 0;
         do {
-            $results = $query->simplePaginate($rows, ['*'], '', ++$page);
+            $page = $baseQuery->simplePaginate($rows, ['*'], '', ++$page);
+            foreach ($page as $row) {
+                yield $row;
+            }
+        } while ($page->hasMorePages());
+    }
+
+    /**
+     * Given a Laravel query builder and the amount of rows, it creates a Laravel paginator and lazily retrieve all the rows using a generator.
+     * The code always retrieve the *first page*! To advance to the next page, it keeps track of the last processed record using the $keyFields argument
+     * Which means it has some requirements:
+     * - The query must be sorted only by the given keys (done automatically by the function)
+     * - They key values should be unique, non-null and strictly comparable ('a' > 'A' returning false is a showstopper!)
+     * - The keys should be present in the "select"
+     *
+     * @param array $keyFields This is used to tell the paginator which fields should be used to keep track of the last processed record.
+     *  The key must be set to the field name available in the query, and the value must map to the field name expressed in the select
+     */
+    public static function paginateDynamically(Builder $query, array $keyFields, int $rows = Constants::DEFAULT_PAGE_SIZE): \Generator
+    {
+        // Cloning to avoid side-effects
+        $baseQuery = clone $query;
+        $lastField = end($keyFields);
+        $clause = '';
+        // Build a filter clause to retrieve the "next pages" based on the last retrieved record
+        foreach ($keyFields as $dbField => $objectField) {
+            $baseQuery->orderBy($dbField);
+            $clause .= "${dbField} > ?" . ($lastField != $objectField ? " OR (${dbField} = ? AND (" : '');
+        }
+        $clause = '(' . $clause . str_repeat(')', 2 * (count($keyFields) - 1)) . ')';
+        $keys = null;
+        do {
+            $query = clone $baseQuery;
+            // If it's a next page request
+            if ($keys) {
+                $bindings = [];
+                // Feed the parameters of the filter clause
+                foreach ($keys as $field => $value) {
+                    $bindings[] = $value;
+                    if ($field != $lastField) {
+                        $bindings[] = $value;
+                    }
+                }
+                $query->whereRaw($clause, $bindings);
+            }
+            // We could use the limit here, but the simplePaginate already has the logic to retrieve one extra row (to check if there's more pages ahead...)
+            $results = $query->simplePaginate($rows);
+            $row = null;
             foreach ($results as $row) {
                 yield $row;
+            }
+            // Save the keys of the last retrieved row
+            if ($row) {
+                $keys = [];
+                foreach ($keyFields as $objectField) {
+                    $keys[$objectField] = $row->$objectField;
+                }
             }
         } while ($results->hasMorePages());
     }

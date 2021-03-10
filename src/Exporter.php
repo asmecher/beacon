@@ -59,23 +59,26 @@ class Exporter
                 $db->raw('MAX(last_beacon) AS first_beacon'),
                 $db->raw('MAX(last_oai_response) AS last_oai_response'),
                 $db->raw('MAX(contexts.country_iso) AS country_iso'),
+                $db->raw('MAX(endpoints.id) AS endpoint_id'),
+                $db->raw('MAX(contexts.id) AS context_id'),
+                $db->raw('MAX(count_spans.id) AS count_span_id')
             )
             ->where($db->raw('COALESCE(count_spans.record_count, 0)'), '>=', $this->minRecords)
-            ->groupBy('endpoints.application', 'endpoints.version', 'endpoints.admin_email', 'endpoints.earliest_datestamp', 'endpoints.repository_name', 'contexts.set_spec')
-            ->orderBy('endpoints.id')
-            ->orderBy('contexts.id')
-            ->orderBy('count_spans.id');
+            ->groupBy('endpoints.application', 'endpoints.version', 'endpoints.admin_email', 'endpoints.earliest_datestamp', 'endpoints.repository_name', 'contexts.set_spec');
 
-        foreach (Entity::paginateLazily($query, 1000) as $i => $context) {
+        $keyFields = ['endpoints.id' => 'endpoint_id', 'contexts.id' => 'context_id', 'count_spans.id' => 'count_span_id'];
+        foreach (Entity::paginateDynamically($query, $keyFields, 1000) as $i => $context) {
+            $context = (array) $context;
+            $context = array_slice($context, 0, count($context) - count($keyFields));
             if (!$i) {
                 // Export column headers
-                if (!$this->file->fputcsv(array_keys((array) $context))) {
+                if (!$this->file->fputcsv(array_keys($context))) {
                     throw new \Exception('Unable to write output');
                 }
             }
 
             // Export the table contents
-            if (!$this->file->fputcsv((array) $context)) {
+            if (!$this->file->fputcsv($context)) {
                 throw new \Exception('Unable to write output');
             }
         }

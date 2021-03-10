@@ -91,8 +91,7 @@ class Endpoints extends Entity
         $query = $this->db
             ->getCapsule()
             ->table('endpoints')
-            ->where($this->db->raw('COALESCE(TIMESTAMPDIFF(SECOND, last_completed_update, CURRENT_TIMESTAMP), ' . $secondsInterval . ')'), '>=', $secondsInterval)
-            ->orderBy('id');
-        return $this->paginateLazily($query, $rows);
+            ->where($this->db->raw('COALESCE(TIMESTAMPDIFF(SECOND, last_completed_update, CURRENT_TIMESTAMP), ' . $secondsInterval . ')'), '>=', $secondsInterval);
+        return $this->paginateDynamically($query, ['id' => 'id'], $rows);
     }
 }

@@ -37,10 +37,8 @@ class Contexts extends Entity
                 'endpoints.first_beacon',
                 'endpoints.last_beacon'
             )
-            ->where($this->db->raw('COALESCE(TIMESTAMPDIFF(SECOND, contexts.last_completed_update, CURRENT_TIMESTAMP), ' . $secondsInterval . ')'), '>=', $secondsInterval)
-            ->orderBy('endpoints.id')
-            ->orderBy('contexts.id');
-        return $this->paginateLazily($query, $rows);
+            ->where($this->db->raw('COALESCE(TIMESTAMPDIFF(SECOND, contexts.last_completed_update, CURRENT_TIMESTAMP), ' . $secondsInterval . ')'), '>=', $secondsInterval);
+        return $this->paginateDynamically($query, ['endpoints.id' => 'endpoint_id', 'contexts.id' => 'id'], $rows);
     }
 
     /**
@@ -63,10 +61,8 @@ class Contexts extends Entity
                 'endpoints.first_beacon',
                 'endpoints.last_beacon'
             )
-            ->where('oai_url', '=', $oaiUrl)
-            ->orderBy('endpoints.id')
-            ->orderBy('contexts.id');
-        return $this->paginateLazily($query, $rows);
+            ->where('oai_url', '=', $oaiUrl);
+        return $this->paginateDynamically($query, ['endpoints.id' => 'endpoint_id', 'contexts.id' => 'id'], $rows);
     }
 
     /**
