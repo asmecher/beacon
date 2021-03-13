@@ -27,8 +27,8 @@ class Constants
     /** @var string Maximum amount of memory a task scheduler can consume */
     public const DEFAULT_MEMORY_LIMIT = '1024M';
 
-    /** @var string Filters out from the export contexts that have less than the given amount of records */
-    public const DEFAULT_MINIMUM_RECORDS = '0';
+    /** @var int Filters out from the export contexts that have less than the given amount of records */
+    public const DEFAULT_MINIMUM_RECORDS = 0;
 
     /** @var int Interval in microseconds to retrieve updates/progress from the task scheduler */
     public const DEFAULT_SCHEDULER_TICK_IN_MICROSECONDS = 1000000;
